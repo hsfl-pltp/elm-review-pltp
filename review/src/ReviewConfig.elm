@@ -6,13 +6,14 @@ Please do not change anything here!
 
 -}
 
+import Import.NoCoreModule as NoCoreModule
+import Import.NoUnqualified as NoUnqualified
 import NoBooleanComparison
 import NoDebug.Log
 import NoDebug.TodoOrToString
 import NoExposingEverything
 import NoForbiddenFeatures
 import NoImportingEverything
-import NoInvalidImport
 import NoMinimalRecordAccess
 import NoMinimalUnderscorePattern
 import NoMissingTypeAnnotation
@@ -37,7 +38,15 @@ import UseNamingConventions
 
 config : List Rule
 config =
-    [ NoBooleanComparison.rule
+    [ NoCoreModule.rule
+    , NoUnqualified.rule
+        [ "Html"
+        , "Html.Attributes"
+        , "Html.Events"
+        , "Svg"
+        , "Svg.Attributes"
+        ]
+    , NoBooleanComparison.rule
     , NoDebug.Log.rule
     , NoDebug.TodoOrToString.rule
     , NoExposingEverything.rule
@@ -63,13 +72,6 @@ config =
     , NoMissingTypeAnnotation.rule
     , NoSinglePatternCase.rule
     , NoUnnecessaryIf.rule
-    , NoInvalidImport.rule
-        [ "Html"
-        , "Html.Attributes"
-        , "Html.Events"
-        , "Svg"
-        , "Svg.Attributes"
-        ]
     , NoUnused.CustomTypeConstructors.rule []
     , NoUnused.Dependencies.rule
     , NoUnused.Exports.rule

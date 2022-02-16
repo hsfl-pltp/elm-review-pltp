@@ -11,3 +11,7 @@ Session.vim
 # elm
 elm-stuff
 repl-temp-*
+
+# Node.js
+package-lock.json
+node_modules
