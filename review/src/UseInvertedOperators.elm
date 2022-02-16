@@ -130,6 +130,9 @@ errorsForOperator parent expr =
 transform : Node Expression -> String
 transform expression =
     case Node.value expression of
+        Expression.OperatorApplication operator _ left right ->
+            String.join " " [ transform left, transformOperator operator, transform right ]
+
         Expression.ParenthesizedExpression expr ->
             "(" ++ transform expr ++ ")"
 
