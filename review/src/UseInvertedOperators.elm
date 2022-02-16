@@ -7,7 +7,6 @@ module UseInvertedOperators exposing (rule)
 -}
 
 import Elm.Syntax.Expression as Expression exposing (Expression(..))
-import Elm.Syntax.Infix exposing (InfixDirection(..))
 import Elm.Syntax.Node as Node exposing (Node(..))
 import Review.ModuleNameLookupTable as ModuleNameLookupTable exposing (ModuleNameLookupTable)
 import Review.Rule as Rule exposing (Error, Rule)
@@ -131,7 +130,7 @@ transform : Node Expression -> String
 transform expression =
     case Node.value expression of
         Expression.OperatorApplication operator _ left right ->
-            String.join " " [ transform left, transformOperator operator, transform right ]
+            String.join " " [ transform left, operator, transform right ]
 
         Expression.ParenthesizedExpression expr ->
             "(" ++ transform expr ++ ")"

@@ -2,12 +2,12 @@ module Negation exposing (..)
 
 foo : Int -> Int -> Bool
 foo a b = 
-    not (a == b || b >= 7)
-
-num : Int -> Int
-num a =
-    a + 2
+    not (a == b + 3 || b >= 7)
 
 bar : Int -> Int -> Bool
 bar a b =
-    not (a == num b) && not (b + 3 >= 7)
+    not (a == b - 2) || not (b >= 7)
+
+baz : Int -> Int -> Int -> Bool
+baz a b c =
+    not ((a < b) == (a < c))

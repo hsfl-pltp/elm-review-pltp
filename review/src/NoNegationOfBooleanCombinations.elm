@@ -7,7 +7,6 @@ module NoNegationOfBooleanCombinations exposing (rule)
 -}
 
 import Elm.Syntax.Expression as Expression exposing (Expression(..))
-import Elm.Syntax.Infix exposing (InfixDirection(..))
 import Elm.Syntax.Node as Node exposing (Node(..))
 import Review.ModuleNameLookupTable as ModuleNameLookupTable exposing (ModuleNameLookupTable)
 import Review.Rule as Rule exposing (Error, Rule)
@@ -101,7 +100,7 @@ errorsForOperator parent expr =
     case expr of
         Expression.OperatorApplication operator _ left right ->
             if operator == "||" || operator == "&&" then
-                [ notError parent (String.join " " (negateOperator operator left right)) ]
+                [ notError parent (String.join " " (negateExpressionToStrings operator left right)) ]
             else
                 []
 
@@ -109,27 +108,41 @@ errorsForOperator parent expr =
             []
 
 
-negateOperator : String -> Node Expression -> Node Expression -> List String
-negateOperator operator left right =
+expressionToStrings : String -> Node Expression -> Node Expression -> List String
+expressionToStrings operator left right =
+    case ( Node.value left, Node.value right ) of
+        ( Expression.FunctionOrValue [] leftName, Expression.FunctionOrValue [] rightName ) ->
+            [ leftName, operator, rightName ]
+
+        ( Expression.FunctionOrValue [] leftName, _ ) ->
+            [ leftName, operator, transform right ]
+
+        ( _, Expression.FunctionOrValue [] rightName ) ->
+            [ transform left, operator, rightName ]
+
+        _ ->
+            [ transform left, operator, transform right ]
+
+negateExpressionToStrings : String -> Node Expression -> Node Expression -> List String
+negateExpressionToStrings operator left right =
     case ( Node.value left, Node.value right ) of
         ( Expression.FunctionOrValue [] leftName, Expression.FunctionOrValue [] rightName ) ->
             [ "not", leftName, transformOperator operator, "not", rightName ]
 
         ( Expression.FunctionOrValue [] leftName, _ ) ->
-            [ "not", leftName, transformOperator operator, transform right ]
+            [ "not", leftName, transformOperator operator, "not (", transform right, ")" ]
 
         ( _, Expression.FunctionOrValue [] rightName ) ->
-            [ transform left, transformOperator operator, "not", rightName ]
+            [ "not (", transform left, ")", transformOperator operator, "not", rightName ]
 
         _ ->
-            [ transform left, transformOperator operator, transform right ]
-
+            [ "not (", transform left, ")", transformOperator operator, "not (", transform right, ")" ]
 
 transform : Node Expression -> String
 transform expression =
     case Node.value expression of
         Expression.OperatorApplication operator _ left right ->
-            String.join " " (negateOperator operator left right)
+            String.join " " (expressionToStrings operator left right)
 
         Expression.ParenthesizedExpression expr ->
             "(" ++ transform expr ++ ")"
