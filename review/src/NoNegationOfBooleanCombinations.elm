@@ -16,7 +16,7 @@ import Review.Rule as Rule exposing (Error, Rule)
 {-| Reports when the use of not
 
     config =
-        [ NoNegations.rule
+        [ NoNegationOfBooleanCombinations.rule
         ]
 
 
@@ -43,7 +43,7 @@ initialContext =
 
 rule : Rule
 rule =
-    Rule.newModuleRuleSchemaUsingContextCreator "NoNegations" initialContext
+    Rule.newModuleRuleSchemaUsingContextCreator "NoNegationOfBooleanCombinations" initialContext
         |> Rule.withExpressionEnterVisitor expressionVisitor
         |> Rule.fromModuleRuleSchema
 
@@ -100,7 +100,10 @@ errorsForOperator : Node Expression -> Expression -> List (Error {})
 errorsForOperator parent expr =
     case expr of
         Expression.OperatorApplication operator _ left right ->
-            [ notError parent (String.join " " (negateOperator operator left right)) ]
+            if operator == "||" || operator == "&&" then
+                [ notError parent (String.join " " (negateOperator operator left right)) ]
+            else
+                []
 
         _ ->
             []
@@ -108,22 +111,18 @@ errorsForOperator parent expr =
 
 negateOperator : String -> Node Expression -> Node Expression -> List String
 negateOperator operator left right =
-    if operator == "||" || operator == "&&" then
-        case ( Node.value left, Node.value right ) of
-            ( Expression.FunctionOrValue [] leftName, Expression.FunctionOrValue [] rightName ) ->
-                [ "not", leftName, transformOperator operator, "not", rightName ]
+    case ( Node.value left, Node.value right ) of
+        ( Expression.FunctionOrValue [] leftName, Expression.FunctionOrValue [] rightName ) ->
+            [ "not", leftName, transformOperator operator, "not", rightName ]
 
-            ( Expression.FunctionOrValue [] leftName, _ ) ->
-                [ "not", leftName, transformOperator operator, transform right ]
+        ( Expression.FunctionOrValue [] leftName, _ ) ->
+            [ "not", leftName, transformOperator operator, transform right ]
 
-            ( _, Expression.FunctionOrValue [] rightName ) ->
-                [ transform left, transformOperator operator, "not", rightName ]
+        ( _, Expression.FunctionOrValue [] rightName ) ->
+            [ transform left, transformOperator operator, "not", rightName ]
 
-            _ ->
-                [ transform left, transformOperator operator, transform right ]
-
-    else
-        [ transform left, transformOperator operator, transform right ]
+        _ ->
+            [ transform left, transformOperator operator, transform right ]
 
 
 transform : Node Expression -> String
@@ -163,24 +162,6 @@ transformOperator operator =
         "||" ->
             "&&"
 
-        "==" ->
-            "/="
-
-        "/=" ->
-            "=="
-
-        ">" ->
-            "<="
-
-        "<" ->
-            ">="
-
-        "<=" ->
-            ">"
-
-        ">=" ->
-            "<"
-
         _ ->
             operator
 
@@ -190,7 +171,7 @@ notError node transformed =
     Rule.error
         { message = "Apply De Morgan's laws."
         , details =
-            [ "When you apply De Morgan's laws, you dont need \"not\"."
+            [ "When you apply De Morgan's laws, you don't need \"not\"."
             , "It can be rewritten as \"" ++ transformed ++ "\""
             ]
         }
