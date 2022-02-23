@@ -6,8 +6,8 @@ Please do not change anything here!
 
 -}
 
-import Import.NoCoreModule as NoCoreModule
-import Import.NoUnqualified as NoUnqualified
+import Import.NoCoreModule
+import Import.NoUnqualified
 import NoBooleanComparison
 import NoDebug.Log
 import NoDebug.TodoOrToString
@@ -38,8 +38,8 @@ import UseNamingConventions
 
 config : List Rule
 config =
-    [ NoCoreModule.rule
-    , NoUnqualified.rule
+    [ Import.NoCoreModule.rule
+    , Import.NoUnqualified.rule
         [ "Html"
         , "Html.Attributes"
         , "Html.Events"
