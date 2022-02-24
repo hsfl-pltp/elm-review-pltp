@@ -9,7 +9,7 @@ module NoNegationOfBooleanOperator exposing (rule)
 import Elm.Syntax.Expression as Expression exposing (Expression(..))
 import Elm.Syntax.Infix exposing (InfixDirection(..))
 import Elm.Syntax.Node as Node exposing (Node(..))
-import Elm.Syntax.Range as Range exposing (Range, Location)
+import Elm.Syntax.Range as Range exposing (Location, Range)
 import Review.ModuleNameLookupTable as ModuleNameLookupTable exposing (ModuleNameLookupTable)
 import Review.Rule as Rule exposing (Error, Rule)
 
@@ -62,12 +62,13 @@ expressionVisitor node lookupTable =
 errorsForApplication : Node Expression -> ModuleNameLookupTable -> List (Node Expression) -> List (Error {})
 errorsForApplication parent lookupTable list =
     case list of
-        x :: expression :: xs ->
-            if isNot x lookupTable then
-                errorsForNot parent (Node.value expression)
+        firstExpr :: secondExpr :: remainingExprs ->
+            if isNot firstExpr lookupTable then
+                errorsForNot parent (Node.value secondExpr)
 
             else
-                errorsForApplication parent lookupTable xs
+                errorsForApplication parent lookupTable remainingExprs
+
         _ ->
             []
 
@@ -111,6 +112,7 @@ errorsForOperator parent expr =
         _ ->
             []
 
+
 expr2Str : Node Expression -> String
 expr2Str expr =
     case Node.value expr of
@@ -136,36 +138,35 @@ expr2Str expr =
             expr2Str left ++ operator ++ expr2Str right
 
         Expression.Application list ->
-            case list of
-                [] ->
-                    ""
-
-                [x] ->
-                    expr2Str x
-
-                x :: xs ->
-                    expr2Str x ++ expr2Str (pseudoNode (Expression.Application xs))
+            List.map expr2Str list
+                |> String.concat
 
         _ ->
-            "" {-Hex, Negation, CharLiteral ... ?-}
+            ""
 
 
-deMorgan : String -> Node Expression -> Node Expression -> Maybe(Node Expression)
+
+{- Hex, Negation, CharLiteral ... ? -}
+
+
+deMorgan : String -> Node Expression -> Node Expression -> Maybe (Node Expression)
 deMorgan operator left right =
     case transformOperator operator of
         Just transformedOperator ->
-            Just (pseudoNode ( Expression.OperatorApplication transformedOperator Non ( negateExpression left ) ( negateExpression right ) ) )
+            Just (pseudoNode (Expression.OperatorApplication transformedOperator Non (negateExpression left) (negateExpression right)))
 
         Nothing ->
             Nothing
 
+
 negateExpression : Node Expression -> Node Expression
 negateExpression expr =
-    pseudoNode (Expression.Application [ pseudoNode (Expression.FunctionOrValue [ "Basics" ] "not" ), pseudoNode (Expression.ParenthesizedExpression expr) ] )
+    pseudoNode (Expression.Application [ pseudoNode (Expression.FunctionOrValue [ "Basics" ] "not"), pseudoNode (Expression.ParenthesizedExpression expr) ])
+
 
 pseudoNode : Expression -> Node Expression
 pseudoNode expr =
-    Node ( Range ( Location 1 1 ) ( Location 2 2 ) ) expr
+    Node (Range (Location 1 1) (Location 2 2)) expr
 
 
 transformOperator : String -> Maybe String
