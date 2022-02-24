@@ -7,7 +7,9 @@ module NoNegationOfBooleanOperator exposing (rule)
 -}
 
 import Elm.Syntax.Expression as Expression exposing (Expression(..))
+import Elm.Syntax.Infix exposing (InfixDirection(..))
 import Elm.Syntax.Node as Node exposing (Node(..))
+import Elm.Syntax.Range as Range exposing (Range, Location)
 import Review.ModuleNameLookupTable as ModuleNameLookupTable exposing (ModuleNameLookupTable)
 import Review.Rule as Rule exposing (Error, Rule)
 
@@ -99,9 +101,9 @@ errorsForOperator : Node Expression -> Expression -> List (Error {})
 errorsForOperator parent expr =
     case expr of
         Expression.OperatorApplication operator _ left right ->
-            case transformOperator operator of
-                Just negatedOperator ->
-                    [ notError parent (String.join " " (negateExpressionToStrings negatedOperator left right)) ]
+            case deMorgan operator left right of
+                Just transformedExpression ->
+                    [ notError parent (expr2Str transformedExpression) ]
 
                 Nothing ->
                     []
@@ -109,64 +111,61 @@ errorsForOperator parent expr =
         _ ->
             []
 
+expr2Str : Node Expression -> String
+expr2Str expr =
+    case Node.value expr of
+        Expression.Literal string ->
+            string
 
-expressionToStrings : String -> Node Expression -> Node Expression -> List String
-expressionToStrings operator left right =
-    case ( Node.value left, Node.value right ) of
-        ( Expression.FunctionOrValue [] leftName, Expression.FunctionOrValue [] rightName ) ->
-            [ leftName, operator, rightName ]
-
-        ( Expression.FunctionOrValue [] leftName, _ ) ->
-            [ leftName, operator, transform right ]
-
-        ( _, Expression.FunctionOrValue [] rightName ) ->
-            [ transform left, operator, rightName ]
-
-        _ ->
-            [ transform left, operator, transform right ]
-
-negateExpressionToStrings : String -> Node Expression -> Node Expression -> List String
-negateExpressionToStrings operator left right =
-    case ( Node.value left, Node.value right ) of
-        ( Expression.FunctionOrValue [] leftName, Expression.FunctionOrValue [] rightName ) ->
-            [ "not", leftName, operator, "not", rightName ]
-
-        ( Expression.FunctionOrValue [] leftName, _ ) ->
-            [ "not", leftName, operator, "not (", transform right, ")" ]
-
-        ( _, Expression.FunctionOrValue [] rightName ) ->
-            [ "not (", transform left, ")", operator, "not", rightName ]
-
-        _ ->
-            [ "not (", transform left, ")", operator, "not (", transform right, ")" ]
-
-
-transform : Node Expression -> String
-transform expression =
-    case Node.value expression of
-        Expression.OperatorApplication operator _ left right ->
-            String.join " " (expressionToStrings operator left right)
-
-        Expression.ParenthesizedExpression expr ->
-            "(" ++ transform expr ++ ")"
-
-        Expression.RecordAccess expr (Node _ name) ->
-            transform expr ++ "." ++ name
-
-        Expression.FunctionOrValue [] name ->
-            name
-
-        Expression.Integer int ->
-            String.fromInt int
+        Expression.Integer integer ->
+            String.fromInt integer
 
         Expression.Floatable float ->
             String.fromFloat float
 
-        Expression.Literal string ->
-            string
+        Expression.FunctionOrValue _ name ->
+            name
+
+        Expression.RecordAccess expression (Node _ name) ->
+            expr2Str expression ++ "." ++ name
+
+        Expression.ParenthesizedExpression expression ->
+            "(" ++ expr2Str expression ++ ")"
+
+        Expression.OperatorApplication operator _ left right ->
+            expr2Str left ++ operator ++ expr2Str right
+
+        Expression.Application list ->
+            case list of
+                [] ->
+                    ""
+
+                [x] ->
+                    expr2Str x
+
+                x :: xs ->
+                    expr2Str x ++ expr2Str (pseudoNode (Expression.Application xs))
 
         _ ->
-            ""
+            "" {-Hex, Negation, CharLiteral ... ?-}
+
+
+deMorgan : String -> Node Expression -> Node Expression -> Maybe(Node Expression)
+deMorgan operator left right =
+    case transformOperator operator of
+        Just transformedOperator ->
+            Just (pseudoNode ( Expression.OperatorApplication transformedOperator Non ( negateExpression left ) ( negateExpression right ) ) )
+
+        Nothing ->
+            Nothing
+
+negateExpression : Node Expression -> Node Expression
+negateExpression expr =
+    pseudoNode (Expression.Application [ pseudoNode (Expression.FunctionOrValue [ "Basics" ] "not" ), pseudoNode (Expression.ParenthesizedExpression expr) ] )
+
+pseudoNode : Expression -> Node Expression
+pseudoNode expr =
+    Node ( Range ( Location 1 1 ) ( Location 2 2 ) ) expr
 
 
 transformOperator : String -> Maybe String

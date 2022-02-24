@@ -11,3 +11,7 @@ bar a b =
 baz : Int -> Int -> Int -> Bool
 baz a b c =
     not ((a < b) == (a < c))
+
+test1 : Bool -> Bool -> Bool
+test1 a b =
+    not ( a || b )
