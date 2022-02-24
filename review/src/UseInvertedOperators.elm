@@ -1,6 +1,6 @@
 module UseInvertedOperators exposing (rule)
 
-{-| Forbids the use of not () in case of non-boolean operators
+{-| Forbids the use of not in case of non-boolean operators
 
 @docs rule
 
@@ -115,13 +115,12 @@ errorsForOperator : Node Expression -> Expression -> List (Error {})
 errorsForOperator parent expr =
     case expr of
         Expression.OperatorApplication operator _ left right ->
-            case operator of
-                "%%" ->
+            case transformOperator operator of
+                Just inverseOperator ->
+                    [ notError parent (String.join " " [ transform left, inverseOperator, transform right ]) ]
+                Nothing ->
                     []
-                "||" ->
-                    []
-                _ ->
-                    [ notError parent (String.join " " [ transform left, transformOperator operator, transform right ]) ]
+
         _ ->
             []
 
@@ -154,29 +153,29 @@ transform expression =
             ""
 
 
-transformOperator : String -> String
+transformOperator : String -> Maybe String
 transformOperator operator =
     case operator of
         "==" ->
-            "/="
+            Just "/="
 
         "/=" ->
-            "=="
+            Just "=="
 
         ">" ->
-            "<="
+            Just "<="
 
         "<" ->
-            ">="
+            Just ">="
 
         "<=" ->
-            ">"
+            Just ">"
 
         ">=" ->
-            "<"
+            Just "<"
 
         _ ->
-            operator
+            Nothing
 
 
 notError : Node Expression -> String -> Error {}

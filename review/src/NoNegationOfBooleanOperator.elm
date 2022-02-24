@@ -1,6 +1,6 @@
-module NoNegationOfBooleanCombinations exposing (rule)
+module NoNegationOfBooleanOperator exposing (rule)
 
-{-| Forbids the use of not () in case of boolean operators
+{-| Forbids the use of not in case of boolean operators
 
 @docs rule
 
@@ -15,7 +15,7 @@ import Review.Rule as Rule exposing (Error, Rule)
 {-| Reports when the use of not
 
     config =
-        [ NoNegationOfBooleanCombinations.rule
+        [ NoNegationOfBooleanOperator.rule
         ]
 
 
@@ -99,10 +99,12 @@ errorsForOperator : Node Expression -> Expression -> List (Error {})
 errorsForOperator parent expr =
     case expr of
         Expression.OperatorApplication operator _ left right ->
-            if operator == "||" || operator == "&&" then
-                [ notError parent (String.join " " (negateExpressionToStrings operator left right)) ]
-            else
-                []
+            case transformOperator operator of
+                Just negatedOperator ->
+                    [ notError parent (String.join " " (negateExpressionToStrings negatedOperator left right)) ]
+
+                Nothing ->
+                    []
 
         _ ->
             []
@@ -127,16 +129,17 @@ negateExpressionToStrings : String -> Node Expression -> Node Expression -> List
 negateExpressionToStrings operator left right =
     case ( Node.value left, Node.value right ) of
         ( Expression.FunctionOrValue [] leftName, Expression.FunctionOrValue [] rightName ) ->
-            [ "not", leftName, transformOperator operator, "not", rightName ]
+            [ "not", leftName, operator, "not", rightName ]
 
         ( Expression.FunctionOrValue [] leftName, _ ) ->
-            [ "not", leftName, transformOperator operator, "not (", transform right, ")" ]
+            [ "not", leftName, operator, "not (", transform right, ")" ]
 
         ( _, Expression.FunctionOrValue [] rightName ) ->
-            [ "not (", transform left, ")", transformOperator operator, "not", rightName ]
+            [ "not (", transform left, ")", operator, "not", rightName ]
 
         _ ->
-            [ "not (", transform left, ")", transformOperator operator, "not (", transform right, ")" ]
+            [ "not (", transform left, ")", operator, "not (", transform right, ")" ]
+
 
 transform : Node Expression -> String
 transform expression =
@@ -166,17 +169,17 @@ transform expression =
             ""
 
 
-transformOperator : String -> String
+transformOperator : String -> Maybe String
 transformOperator operator =
     case operator of
         "&&" ->
-            "||"
+            Just "||"
 
         "||" ->
-            "&&"
+            Just "&&"
 
         _ ->
-            operator
+            Nothing
 
 
 notError : Node Expression -> String -> Error {}
