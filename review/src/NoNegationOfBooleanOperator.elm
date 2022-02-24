@@ -42,7 +42,7 @@ initialContext =
 
 rule : Rule
 rule =
-    Rule.newModuleRuleSchemaUsingContextCreator "NoNegationOfBooleanCombinations" initialContext
+    Rule.newModuleRuleSchemaUsingContextCreator "NoNegationOfBooleanOperator" initialContext
         |> Rule.withExpressionEnterVisitor expressionVisitor
         |> Rule.fromModuleRuleSchema
 
