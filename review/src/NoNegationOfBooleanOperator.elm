@@ -62,12 +62,12 @@ expressionVisitor node lookupTable =
 errorsForApplication : Node Expression -> ModuleNameLookupTable -> List (Node Expression) -> List (Error {})
 errorsForApplication parent lookupTable list =
     case list of
-        firstExpr :: secondExpr :: remainingExprs ->
-            if isNot firstExpr lookupTable then
-                errorsForNot parent (Node.value secondExpr)
+        [ func, arg ] ->
+            if isNot func lookupTable then
+                errorsForNot parent (Node.value arg)
 
             else
-                errorsForApplication parent lookupTable remainingExprs
+                []
 
         _ ->
             []
@@ -166,7 +166,7 @@ negateExpression expr =
 
 pseudoNode : Expression -> Node Expression
 pseudoNode expr =
-    Node (Range (Location 1 1) (Location 2 2)) expr
+    Node (Range (Location -1 -1) (Location -1 -1)) expr
 
 
 transformOperator : String -> Maybe String
