@@ -6,10 +6,12 @@ module NoNegationOfBooleanOperator exposing (rule)
 
 -}
 
+import Elm.Pretty
 import Elm.Syntax.Expression as Expression exposing (Expression(..))
 import Elm.Syntax.Infix exposing (InfixDirection(..))
 import Elm.Syntax.Node as Node exposing (Node(..))
-import Elm.Syntax.Range as Range exposing (Location, Range)
+import Elm.Syntax.Range exposing (Location, Range)
+import Pretty
 import Review.ModuleNameLookupTable as ModuleNameLookupTable exposing (ModuleNameLookupTable)
 import Review.Rule as Rule exposing (Error, Rule)
 
@@ -104,7 +106,7 @@ errorsForOperator parent expr =
         Expression.OperatorApplication operator _ left right ->
             case deMorgan operator left right of
                 Just transformedExpression ->
-                    [ notError parent (expr2Str transformedExpression) ]
+                    [ notError parent (Pretty.pretty 120 (Elm.Pretty.prettyExpression transformedExpression)) ]
 
                 Nothing ->
                     []
@@ -113,55 +115,31 @@ errorsForOperator parent expr =
             []
 
 
-expr2Str : Node Expression -> String
-expr2Str expr =
-    case Node.value expr of
-        Expression.Literal string ->
-            string
-
-        Expression.Integer integer ->
-            String.fromInt integer
-
-        Expression.Floatable float ->
-            String.fromFloat float
-
-        Expression.FunctionOrValue _ name ->
-            name
-
-        Expression.RecordAccess expression (Node _ name) ->
-            expr2Str expression ++ "." ++ name
-
-        Expression.ParenthesizedExpression expression ->
-            "(" ++ expr2Str expression ++ ")"
-
-        Expression.OperatorApplication operator _ left right ->
-            expr2Str left ++ operator ++ expr2Str right
-
-        Expression.Application list ->
-            List.map expr2Str list
-                |> String.concat
-
-        _ ->
-            ""
-
-
-
-{- Hex, Negation, CharLiteral ... ? -}
-
-
-deMorgan : String -> Node Expression -> Node Expression -> Maybe (Node Expression)
+deMorgan : String -> Node Expression -> Node Expression -> Maybe Expression
 deMorgan operator left right =
     case transformOperator operator of
         Just transformedOperator ->
-            Just (pseudoNode (Expression.OperatorApplication transformedOperator Non (negateExpression left) (negateExpression right)))
+            Just (Expression.OperatorApplication transformedOperator Non (negateExpression left) (negateExpression right))
 
         Nothing ->
             Nothing
 
 
+
+{- Negation of Expression could be improved by adding more cases:
+   when parentheses are obsolete
+   double negation "not not"
+-}
+
+
 negateExpression : Node Expression -> Node Expression
 negateExpression expr =
-    pseudoNode (Expression.Application [ pseudoNode (Expression.FunctionOrValue [ "Basics" ] "not"), pseudoNode (Expression.ParenthesizedExpression expr) ])
+    case Node.value expr of
+        Expression.ParenthesizedExpression _ ->
+            pseudoNode (Expression.Application [ pseudoNode (Expression.FunctionOrValue [ "Basics" ] "not"), expr ])
+
+        _ ->
+            pseudoNode (Expression.Application [ pseudoNode (Expression.FunctionOrValue [ "Basics" ] "not"), pseudoNode (Expression.ParenthesizedExpression expr) ])
 
 
 pseudoNode : Expression -> Node Expression

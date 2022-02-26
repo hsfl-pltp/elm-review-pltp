@@ -6,8 +6,11 @@ module UseInvertedOperators exposing (rule)
 
 -}
 
+import Elm.Pretty
 import Elm.Syntax.Expression as Expression exposing (Expression(..))
+import Elm.Syntax.Infix exposing (InfixDirection(..))
 import Elm.Syntax.Node as Node exposing (Node(..))
+import Pretty
 import Review.ModuleNameLookupTable as ModuleNameLookupTable exposing (ModuleNameLookupTable)
 import Review.Rule as Rule exposing (Error, Rule)
 
@@ -82,6 +85,7 @@ errorsForApplication parent lookupTable list =
 
             else
                 errorsForApplication parent lookupTable xs
+
         _ ->
             []
 
@@ -115,9 +119,10 @@ errorsForOperator : Node Expression -> Expression -> List (Error {})
 errorsForOperator parent expr =
     case expr of
         Expression.OperatorApplication operator _ left right ->
-            case transformOperator operator of
-                Just inverseOperator ->
-                    [ notError parent (String.join " " [ transform left, inverseOperator, transform right ]) ]
+            case inverseExpression operator left right of
+                Just inversedExpression ->
+                    [ notError parent (Pretty.pretty 120 (Elm.Pretty.prettyExpression inversedExpression)) ]
+
                 Nothing ->
                     []
 
@@ -125,32 +130,14 @@ errorsForOperator parent expr =
             []
 
 
-transform : Node Expression -> String
-transform expression =
-    case Node.value expression of
-        Expression.OperatorApplication operator _ left right ->
-            String.join " " [ transform left, operator, transform right ]
+inverseExpression : String -> Node Expression -> Node Expression -> Maybe Expression
+inverseExpression operator left right =
+    case transformOperator operator of
+        Just transformedOperator ->
+            Just (Expression.OperatorApplication transformedOperator Non left right)
 
-        Expression.ParenthesizedExpression expr ->
-            "(" ++ transform expr ++ ")"
-
-        Expression.RecordAccess expr (Node _ name) ->
-            transform expr ++ "." ++ name
-
-        Expression.FunctionOrValue [] name ->
-            name
-
-        Expression.Integer int ->
-            String.fromInt int
-
-        Expression.Floatable float ->
-            String.fromFloat float
-
-        Expression.Literal string ->
-            string
-
-        _ ->
-            ""
+        Nothing ->
+            Nothing
 
 
 transformOperator : String -> Maybe String
