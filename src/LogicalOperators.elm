@@ -2,22 +2,60 @@ module LogicalOperators exposing (..)
 
 
 any : (a -> Bool) -> List a -> Bool
-any isOkey list =
+any isOkay list =
     case list of
         [] ->
             False
 
         x :: xs ->
-            if isOkey x then
+            if isOkay x then
                 True
 
             else
-                any isOkey xs
+                any isOkay xs
+
 
 any2 : (a -> Bool) -> List a -> Bool
-any2 isOkey list =
-    case list of 
-        [] -> 
+any2 isOkay list =
+    case list of
+        [] ->
             False
+
         x :: xs ->
-            isOkey x || any isOkey xs
+            isOkay x || any isOkay xs
+
+
+func1 : Bool -> Bool
+func1 a =
+    if 4 < 2 then
+        True
+
+    else
+        a
+
+
+func2 : Bool -> Bool
+func2 a =
+    if 4 < 2 then
+        False
+
+    else
+        a
+
+
+func3 : Bool -> Bool
+func3 a =
+    if 4 < 2 then
+        a
+
+    else
+        True
+
+
+func4 : Bool -> Bool
+func4 a =
+    if 4 < 2 then
+        a
+
+    else
+        False

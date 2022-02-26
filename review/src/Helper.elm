@@ -1,4 +1,4 @@
-module Helper exposing (functionName, isBoolExpression, toModuleName)
+module Helper exposing (functionName, isBoolExpression, maybeBoolLiteralOfExpression, toModuleName)
 
 import Elm.Syntax.Expression as Expression exposing (Expression)
 import Elm.Syntax.ModuleName exposing (ModuleName)
@@ -34,3 +34,18 @@ isBoolExpression node lookupTable =
 
         _ ->
             False
+
+
+maybeBoolLiteralOfExpression : Node Expression -> ModuleNameLookupTable -> Maybe Bool
+maybeBoolLiteralOfExpression node lookupTable =
+    case Node.value node of
+        Expression.FunctionOrValue _ value ->
+            case ModuleNameLookupTable.moduleNameFor lookupTable node of
+                Just [ "Basics" ] ->
+                    Just (value == "True")
+
+                _ ->
+                    Nothing
+
+        _ ->
+            Nothing

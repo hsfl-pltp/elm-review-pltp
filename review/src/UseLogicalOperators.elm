@@ -9,8 +9,8 @@ module UseLogicalOperators exposing (rule)
 import Elm.Syntax.Expression as Expression exposing (Expression)
 import Elm.Syntax.Node as Node exposing (Node(..))
 import Helper
-import Review.Rule as Rule exposing (Error, Rule)
 import Review.ModuleNameLookupTable exposing (ModuleNameLookupTable)
+import Review.Rule as Rule exposing (Error, Rule)
 
 
 {-| Reports an error when one path of en if expression returns a bool value
@@ -23,29 +23,29 @@ import Review.ModuleNameLookupTable exposing (ModuleNameLookupTable)
 ## Fail
 
     any : (a -> Bool) -> List a -> Bool
-    any isOkey list =
+    any isOkay list =
         case list of
             [] ->
                 False
 
             x :: xs ->
-                if isOkey x then
+                if isOkay x then
                     True
 
                 else
-                    any isOkey xs
+                    any isOkay xs
 
 
 ## Success
 
     any : (a -> Bool) -> List a -> Bool
-    any isOkey list =
+    any isOkay list =
         case list of
             [] ->
                 False
 
             x :: xs ->
-                isOkey x || any isOkey xs
+                isOkay x || any isOkay xs
 
 -}
 initialContext : Rule.ContextCreator () ModuleNameLookupTable
@@ -54,6 +54,7 @@ initialContext =
         (\lookupTable () -> lookupTable)
         |> Rule.withModuleNameLookupTable
 
+
 rule : Rule
 rule =
     Rule.newModuleRuleSchemaUsingContextCreator "UseLogicalOperators" initialContext
@@ -61,47 +62,43 @@ rule =
         |> Rule.fromModuleRuleSchema
 
 
-expressionVisitor : Node Expression -> ModuleNameLookupTable -> (List (Error {}), ModuleNameLookupTable)
+expressionVisitor : Node Expression -> ModuleNameLookupTable -> ( List (Error {}), ModuleNameLookupTable )
 expressionVisitor node lookupTable =
     case Node.value node of
-        Expression.IfBlock _ left right ->
-            (errorsForIf node left right lookupTable, lookupTable)
+        Expression.IfBlock _ statement elseStatement ->
+            ( errorsForIf node statement elseStatement lookupTable, lookupTable )
 
         _ ->
-            ([], lookupTable)
+            ( [], lookupTable )
 
 
-errorsForIf : Node Expression -> Node Expression -> Node Expression -> ModuleNameLookupTable-> List (Error {})
-errorsForIf parent left right lookupTable=
-    if not (Helper.isBoolExpression left lookupTable) && Helper.isBoolExpression right lookupTable then
-        [ andError parent ]
+errorsForIf : Node Expression -> Node Expression -> Node Expression -> ModuleNameLookupTable -> List (Error {})
+errorsForIf parent statement elseStatement lookupTable =
+    case ( Helper.maybeBoolLiteralOfExpression statement lookupTable, Helper.maybeBoolLiteralOfExpression elseStatement lookupTable ) of
+        ( Just True, Nothing ) ->
+            [ error parent "condition || elseStatement" ]
 
-    else if Helper.isBoolExpression left lookupTable && not (Helper.isBoolExpression right lookupTable) then
-        [ orError parent ]
+        ( Just False, Nothing ) ->
+            [ error parent "not condition && elseStatement" ]
 
-    else
-        []
+        ( Nothing, Just True ) ->
+            [ error parent "not condition || statement" ]
+
+        ( Nothing, Just False ) ->
+            [ error parent "condition && statement" ]
+
+        _ ->
+            []
 
 
-andError : Node Expression -> Error {}
-andError node =
+error : Node Expression -> String -> Error {}
+error node transformed =
     Rule.error
-        { message = "Use a && operator instead of if"
+        { message = "Use boolean expression instead of if"
         , details =
-            [ "When the else path of an if expression returns a boolean value, you can use the && operator instead "
-            , "For Example: \"if a then func b else False\" is the same as \"a && func b\", "
-            ]
-        }
-        (Node.range node)
-
-
-orError : Node Expression -> Error {}
-orError node =
-    Rule.error
-        { message = "Use a || operator instead of if"
-        , details =
-            [ "When the first path of an if expression returns a boolean valu, you can use the || operator instead"
-            , "For Example: \"if a then True else func b\" is the same as \"a || func b\", "
+            [ "When either the then path or the else path return a boolean value, you should write a boolean expression"
+            , "Instead of \"if condition then statement else elseStatement\""
+            , "It can be rewritten as \"" ++ transformed ++ "\""
             ]
         }
         (Node.range node)
