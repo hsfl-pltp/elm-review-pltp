@@ -59,3 +59,17 @@ func4 a =
 
     else
         False
+
+
+c : Bool
+c =
+    True
+
+
+func5 : Bool -> Bool
+func5 a =
+    if 4 < 2 then
+        a
+
+    else
+        c

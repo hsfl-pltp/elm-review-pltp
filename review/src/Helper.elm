@@ -42,7 +42,15 @@ maybeBoolLiteralOfExpression node lookupTable =
         Expression.FunctionOrValue _ value ->
             case ModuleNameLookupTable.moduleNameFor lookupTable node of
                 Just [ "Basics" ] ->
-                    Just (value == "True")
+                    case value of
+                        "True" ->
+                            Just True
+
+                        "False" ->
+                            Just False
+
+                        _ ->
+                            Nothing
 
                 _ ->
                     Nothing

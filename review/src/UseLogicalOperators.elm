@@ -65,40 +65,39 @@ rule =
 expressionVisitor : Node Expression -> ModuleNameLookupTable -> ( List (Error {}), ModuleNameLookupTable )
 expressionVisitor node lookupTable =
     case Node.value node of
-        Expression.IfBlock _ statement elseStatement ->
-            ( errorsForIf node statement elseStatement lookupTable, lookupTable )
+        Expression.IfBlock _ thenExpression elseExpression ->
+            ( errorsForIf node thenExpression elseExpression lookupTable, lookupTable )
 
         _ ->
             ( [], lookupTable )
 
 
 errorsForIf : Node Expression -> Node Expression -> Node Expression -> ModuleNameLookupTable -> List (Error {})
-errorsForIf parent statement elseStatement lookupTable =
-    case ( Helper.maybeBoolLiteralOfExpression statement lookupTable, Helper.maybeBoolLiteralOfExpression elseStatement lookupTable ) of
+errorsForIf parent thenExpression elseExpression lookupTable =
+    case ( Helper.maybeBoolLiteralOfExpression thenExpression lookupTable, Helper.maybeBoolLiteralOfExpression elseExpression lookupTable ) of
         ( Just True, Nothing ) ->
-            [ error parent "condition || elseStatement" ]
+            [ error parent "||" ]
 
         ( Just False, Nothing ) ->
-            [ error parent "not condition && elseStatement" ]
+            [ error parent "&&" ]
 
         ( Nothing, Just True ) ->
-            [ error parent "not condition || statement" ]
+            [ error parent "||" ]
 
         ( Nothing, Just False ) ->
-            [ error parent "condition && statement" ]
+            [ error parent "&&" ]
 
         _ ->
             []
 
 
 error : Node Expression -> String -> Error {}
-error node transformed =
+error node operator =
     Rule.error
         { message = "Use boolean expression instead of if"
         , details =
-            [ "When either the then path or the else path return a boolean value, you should write a boolean expression"
-            , "Instead of \"if condition then statement else elseStatement\""
-            , "It can be rewritten as \"" ++ transformed ++ "\""
+            [ "When exactly one branch in an if-Block returns a boolean value, you should write a boolean expression instead"
+            , "In this case I suggest a simple expression using \"" ++ operator ++ "\""
             ]
         }
         (Node.range node)
