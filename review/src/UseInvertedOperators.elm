@@ -6,11 +6,8 @@ module UseInvertedOperators exposing (rule)
 
 -}
 
-import Elm.Pretty
 import Elm.Syntax.Expression as Expression exposing (Expression(..))
-import Elm.Syntax.Infix exposing (InfixDirection(..))
 import Elm.Syntax.Node as Node exposing (Node(..))
-import Pretty
 import Review.ModuleNameLookupTable as ModuleNameLookupTable exposing (ModuleNameLookupTable)
 import Review.Rule as Rule exposing (Error, Rule)
 
@@ -118,26 +115,16 @@ errorsForNot parent expression =
 errorsForOperator : Node Expression -> Expression -> List (Error {})
 errorsForOperator parent expr =
     case expr of
-        Expression.OperatorApplication operator _ left right ->
-            case inverseExpression operator left right of
-                Just inversedExpression ->
-                    [ notError parent (Pretty.pretty 120 (Elm.Pretty.prettyExpression inversedExpression)) ]
+        Expression.OperatorApplication operator _ _ _ ->
+            case transformOperator operator of
+                Just transformed ->
+                    [ notError parent transformed ]
 
                 Nothing ->
                     []
 
         _ ->
             []
-
-
-inverseExpression : String -> Node Expression -> Node Expression -> Maybe Expression
-inverseExpression operator left right =
-    case transformOperator operator of
-        Just transformedOperator ->
-            Just (Expression.OperatorApplication transformedOperator Non left right)
-
-        Nothing ->
-            Nothing
 
 
 transformOperator : String -> Maybe String
@@ -170,8 +157,8 @@ notError node transformed =
     Rule.error
         { message = "Use inverted operator instead of not."
         , details =
-            [ "In this case you should use another operator."
-            , "It can be rewritten as \"" ++ transformed ++ "\""
+            [ "In this case you should remove the Negation and use the negated operator."
+            , "Try to find an expression with \"" ++ transformed ++ "\"."
             ]
         }
         (Node.range node)
