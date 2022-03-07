@@ -6,12 +6,8 @@ module NoNegationOfBooleanOperator exposing (rule)
 
 -}
 
-import Elm.Pretty
 import Elm.Syntax.Expression as Expression exposing (Expression(..))
-import Elm.Syntax.Infix exposing (InfixDirection(..))
 import Elm.Syntax.Node as Node exposing (Node(..))
-import Elm.Syntax.Range exposing (Location, Range)
-import Pretty
 import Review.ModuleNameLookupTable as ModuleNameLookupTable exposing (ModuleNameLookupTable)
 import Review.Rule as Rule exposing (Error, Rule)
 
@@ -103,70 +99,24 @@ errorsForNot parent expression =
 errorsForOperator : Node Expression -> Expression -> List (Error {})
 errorsForOperator parent expr =
     case expr of
-        Expression.OperatorApplication operator _ left right ->
-            case deMorgan operator left right of
-                Just transformedExpression ->
-                    [ notError parent (Pretty.pretty 120 (Elm.Pretty.prettyExpression transformedExpression)) ]
+        Expression.OperatorApplication operator _ _ _ ->
+            if operator == "&&" || operator == "||" then
+                [ notError parent ]
 
-                Nothing ->
-                    []
+            else
+                []
 
         _ ->
             []
 
 
-deMorgan : String -> Node Expression -> Node Expression -> Maybe Expression
-deMorgan operator left right =
-    case transformOperator operator of
-        Just transformedOperator ->
-            Just (Expression.OperatorApplication transformedOperator Non (negateExpression left) (negateExpression right))
-
-        Nothing ->
-            Nothing
-
-
-
-{- Negation of Expression could be improved by adding more cases:
-   when parentheses are obsolete
-   double negation "not not"
--}
-
-
-negateExpression : Node Expression -> Node Expression
-negateExpression expr =
-    case Node.value expr of
-        Expression.ParenthesizedExpression _ ->
-            pseudoNode (Expression.Application [ pseudoNode (Expression.FunctionOrValue [ "Basics" ] "not"), expr ])
-
-        _ ->
-            pseudoNode (Expression.Application [ pseudoNode (Expression.FunctionOrValue [ "Basics" ] "not"), pseudoNode (Expression.ParenthesizedExpression expr) ])
-
-
-pseudoNode : Expression -> Node Expression
-pseudoNode expr =
-    Node (Range (Location -1 -1) (Location -1 -1)) expr
-
-
-transformOperator : String -> Maybe String
-transformOperator operator =
-    case operator of
-        "&&" ->
-            Just "||"
-
-        "||" ->
-            Just "&&"
-
-        _ ->
-            Nothing
-
-
-notError : Node Expression -> String -> Error {}
-notError node transformed =
+notError : Node Expression -> Error {}
+notError node =
     Rule.error
-        { message = "Apply De Morgan's laws."
+        { message = "Possibility to apply De Morgan's law detected."
         , details =
-            [ "When you apply De Morgan's laws, you don't need \"not\"."
-            , "It can be rewritten as \"" ++ transformed ++ "\""
+            [ "When you apply De Morgan's law, you don't need \"not\"."
+            , "If you don't remember the law, here is a little example: \"not (a && b) = not a || not b\""
             ]
         }
         (Node.range node)
