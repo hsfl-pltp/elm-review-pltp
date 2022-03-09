@@ -31,7 +31,7 @@ import Review.Rule exposing (Rule)
 import UseCamelCase
 import UseCommutingConversions
 import UseConstantsForStyle
-import UseEtaReductions
+import UseEtaReductions exposing (ErrorStyle(..))
 import UseInvertedOperators
 import UseLogicalOperators
 import UseNamingConventions
@@ -83,7 +83,7 @@ config =
     , UseCommutingConversions.rule
     , UseConstantsForStyle.rule
     , UseCamelCase.rule UseCamelCase.default
-    , UseEtaReductions.rule False
+    , UseEtaReductions.rule ModuleError
     , UseInvertedOperators.rule
     , UseNamingConventions.rule
     , UseLogicalOperators.rule
