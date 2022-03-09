@@ -1,4 +1,7 @@
-module UseEtaReductions exposing (rule)
+module UseEtaReductions exposing
+    ( rule
+    , ErrorStyle(..)
+    )
 
 {-| Forbids function declarations without eta reductions
 
@@ -41,59 +44,65 @@ globalRange =
     Range (Location 0 0) (Location 0 0)
 
 
-rule : Bool -> Rule
-rule withLocation =
+type ErrorStyle
+    = LocatedError
+    | ModuleError
+
+
+rule : ErrorStyle -> Rule
+rule errorStyle =
     Rule.newModuleRuleSchema "UseEtaReductions" ()
-        |> Rule.withSimpleExpressionVisitor (expressionVisitor withLocation)
-        |> Rule.withSimpleDeclarationVisitor (declarationVisitor withLocation)
+        |> Rule.withSimpleExpressionVisitor (expressionVisitor errorStyle)
+        |> Rule.withSimpleDeclarationVisitor (declarationVisitor errorStyle)
         |> Rule.fromModuleRuleSchema
 
 
-expressionVisitor : Bool -> Node Expression -> List (Error {})
-expressionVisitor withLocation node =
+expressionVisitor : ErrorStyle -> Node Expression -> List (Error {})
+expressionVisitor errorStyle node =
     case Node.value node of
         Expression.LambdaExpression lambda ->
-            errorsForLambda withLocation node lambda
+            errorsForLambda errorStyle node lambda
 
         _ ->
             []
 
 
-declarationVisitor : Bool -> Node Declaration -> List (Error {})
-declarationVisitor withLocation node =
+declarationVisitor : ErrorStyle -> Node Declaration -> List (Error {})
+declarationVisitor errorStyle node =
     case Node.value node of
         Declaration.FunctionDeclaration fn ->
-            errorsForFunction withLocation fn
+            errorsForFunction errorStyle fn
 
         _ ->
             []
 
 
-errorsForFunction : Bool -> Function -> List (Error {})
-errorsForFunction withLocation { declaration } =
-    errorsFunctionImplementation withLocation declaration
+errorsForFunction : ErrorStyle -> Function -> List (Error {})
+errorsForFunction errorStyle { declaration } =
+    errorsFunctionImplementation errorStyle declaration
 
 
-errorsFunctionImplementation : Bool -> Node FunctionImplementation -> List (Error {})
-errorsFunctionImplementation withLocation (Node _ { expression, arguments }) =
+errorsFunctionImplementation : ErrorStyle -> Node FunctionImplementation -> List (Error {})
+errorsFunctionImplementation errorStyle (Node _ { expression, arguments }) =
     case Node.value expression of
         Expression.Application list ->
-            errorsForApplication withLocation expression (List.Extra.last list) (List.Extra.last arguments)
+            errorsForApplication errorStyle expression (List.Extra.last list) (List.Extra.last arguments)
 
         _ ->
             []
 
 
-errorsForApplication : Bool -> Node Expression -> Maybe (Node Expression) -> Maybe (Node Pattern) -> List (Error {})
-errorsForApplication withLocation node expression pattern =
+errorsForApplication : ErrorStyle -> Node Expression -> Maybe (Node Expression) -> Maybe (Node Pattern) -> List (Error {})
+errorsForApplication errorStyle node expression pattern =
     case ( expression, pattern ) of
         ( Just exp, Just pat ) ->
             if equal exp pat then
-                if withLocation then
-                    [ applicationError (Node.range node) ]
+                case errorStyle of
+                    LocatedError ->
+                        [ applicationError (Node.range node) ]
 
-                else
-                    [ applicationError globalRange ]
+                    ModuleError ->
+                        [ applicationError globalRange ]
 
             else
                 []
@@ -102,19 +111,20 @@ errorsForApplication withLocation node expression pattern =
             []
 
 
-errorsForLambda : Bool -> Node Expression -> Expression.Lambda -> List (Error {})
-errorsForLambda withLocation node { expression, args } =
+errorsForLambda : ErrorStyle -> Node Expression -> Expression.Lambda -> List (Error {})
+errorsForLambda errorStyle node { expression, args } =
     case List.Extra.last args of
         Nothing ->
             []
 
         Just arg ->
             if equal expression arg then
-                if withLocation then
-                    [ lambdaError (Node.range node) ]
+                case errorStyle of
+                    LocatedError ->
+                        [ lambdaError (Node.range node) ]
 
-                else
-                    [ lambdaError globalRange ]
+                    ModuleError ->
+                        [ lambdaError globalRange ]
 
             else
                 []
