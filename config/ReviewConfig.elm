@@ -83,7 +83,7 @@ config =
     , UseCommutingConversions.rule
     , UseConstantsForStyle.rule
     , UseCamelCase.rule UseCamelCase.default
-    , UseEtaReductions.rule
+    , UseEtaReductions.rule False
     , UseInvertedOperators.rule
     , UseNamingConventions.rule
     , UseLogicalOperators.rule
