@@ -49,60 +49,129 @@ type ErrorStyle
     | ModuleError
 
 
+type alias Context =
+    { applCount : Int
+    , lambdaCount : Int
+    }
+
+
+initialContext : Context
+initialContext =
+    { applCount = 0, lambdaCount = 0 }
+
+
 rule : ErrorStyle -> Rule
 rule errorStyle =
-    Rule.newModuleRuleSchema "UseEtaReductions" ()
-        |> Rule.withSimpleExpressionVisitor (expressionVisitor errorStyle)
-        |> Rule.withSimpleDeclarationVisitor (declarationVisitor errorStyle)
-        |> Rule.fromModuleRuleSchema
+    case errorStyle of
+        LocatedError ->
+            Rule.newModuleRuleSchema "UseEtaReductions" ()
+                |> Rule.withSimpleExpressionVisitor simpleExpressionVisitor
+                |> Rule.withSimpleDeclarationVisitor simpleDeclarationVisitor
+                |> Rule.fromModuleRuleSchema
+
+        ModuleError ->
+            Rule.newModuleRuleSchema "UseEtaReductions" initialContext
+                |> Rule.withExpressionEnterVisitor expressionVisitor
+                |> Rule.withDeclarationEnterVisitor declarationVisitor
+                |> Rule.withFinalModuleEvaluation finalEvaluation
+                |> Rule.fromModuleRuleSchema
 
 
-expressionVisitor : ErrorStyle -> Node Expression -> List (Error {})
-expressionVisitor errorStyle node =
+simpleExpressionVisitor : Node Expression -> List (Error {})
+simpleExpressionVisitor node =
     case Node.value node of
         Expression.LambdaExpression lambda ->
-            errorsForLambda errorStyle node lambda
+            errorsForLambda node lambda
 
         _ ->
             []
 
 
-declarationVisitor : ErrorStyle -> Node Declaration -> List (Error {})
-declarationVisitor errorStyle node =
+simpleDeclarationVisitor : Node Declaration -> List (Error {})
+simpleDeclarationVisitor node =
     case Node.value node of
         Declaration.FunctionDeclaration fn ->
-            errorsForFunction errorStyle fn
+            errorsFunctionImplementation fn.declaration
 
         _ ->
             []
 
 
-errorsForFunction : ErrorStyle -> Function -> List (Error {})
-errorsForFunction errorStyle { declaration } =
-    errorsFunctionImplementation errorStyle declaration
+expressionVisitor : Node Expression -> Context -> ( List (Error {}), Context )
+expressionVisitor node context =
+    case Node.value node of
+        Expression.LambdaExpression { args, expression } ->
+            case List.Extra.last args of
+                Just arg ->
+                    if equal expression arg then
+                        ( [], { context | lambdaCount = context.lambdaCount + 1 } )
+
+                    else
+                        ( [], context )
+
+                Nothing ->
+                    ( [], context )
+
+        _ ->
+            ( [], context )
 
 
-errorsFunctionImplementation : ErrorStyle -> Node FunctionImplementation -> List (Error {})
-errorsFunctionImplementation errorStyle (Node _ { expression, arguments }) =
+declarationVisitor : Node Declaration -> Context -> ( List (Error {}), Context )
+declarationVisitor node context =
+    case Node.value node of
+        Declaration.FunctionDeclaration { declaration } ->
+            let
+                expr =
+                    (Node.value declaration).expression
+
+                args =
+                    (Node.value declaration).arguments
+            in
+            case Node.value expr of
+                Expression.Application list ->
+                    case ( List.Extra.last list, List.Extra.last args ) of
+                        ( Just exp, Just pat ) ->
+                            if equal exp pat then
+                                ( [], { context | applCount = context.applCount + 1 } )
+
+                            else
+                                ( [], context )
+
+                        _ ->
+                            ( [], context )
+
+                _ ->
+                    ( [], context )
+
+        _ ->
+            ( [], context )
+
+
+finalEvaluation : Context -> List (Error {})
+finalEvaluation context =
+    if context.applCount > 0 || context.lambdaCount > 0 then
+        [ moduleError context ]
+
+    else
+        []
+
+
+errorsFunctionImplementation : Node FunctionImplementation -> List (Error {})
+errorsFunctionImplementation (Node _ { expression, arguments }) =
     case Node.value expression of
         Expression.Application list ->
-            errorsForApplication errorStyle expression (List.Extra.last list) (List.Extra.last arguments)
+            errorsForApplication expression (List.Extra.last list) (List.Extra.last arguments)
 
         _ ->
             []
 
 
-errorsForApplication : ErrorStyle -> Node Expression -> Maybe (Node Expression) -> Maybe (Node Pattern) -> List (Error {})
-errorsForApplication errorStyle node expression pattern =
+errorsForApplication : Node Expression -> Maybe (Node Expression) -> Maybe (Node Pattern) -> List (Error {})
+errorsForApplication node expression pattern =
     case ( expression, pattern ) of
         ( Just exp, Just pat ) ->
             if equal exp pat then
-                case errorStyle of
-                    LocatedError ->
-                        [ applicationError (Node.range node) ]
-
-                    ModuleError ->
-                        [ applicationError globalRange ]
+                [ applicationError node ]
 
             else
                 []
@@ -111,20 +180,15 @@ errorsForApplication errorStyle node expression pattern =
             []
 
 
-errorsForLambda : ErrorStyle -> Node Expression -> Expression.Lambda -> List (Error {})
-errorsForLambda errorStyle node { expression, args } =
+errorsForLambda : Node Expression -> Expression.Lambda -> List (Error {})
+errorsForLambda node { expression, args } =
     case List.Extra.last args of
         Nothing ->
             []
 
         Just arg ->
             if equal expression arg then
-                case errorStyle of
-                    LocatedError ->
-                        [ lambdaError (Node.range node) ]
-
-                    ModuleError ->
-                        [ lambdaError globalRange ]
+                [ lambdaError node ]
 
             else
                 []
@@ -148,8 +212,8 @@ equal expression pattern =
             False
 
 
-lambdaError : Range -> Error {}
-lambdaError range =
+lambdaError : Node Expression -> Error {}
+lambdaError node =
     Rule.error
         { message = "Possible eta reduction for labmda detected."
         , details =
@@ -157,11 +221,11 @@ lambdaError range =
             , "Iamgine you have a lambda like \"(\\e -> inc e\", then you can just write \"inc\""
             ]
         }
-        range
+        (Node.range node)
 
 
-applicationError : Range -> Error {}
-applicationError range =
+applicationError : Node Expression -> Error {}
+applicationError node =
     Rule.error
         { message = "Possible eta reduction detected."
         , details =
@@ -170,4 +234,25 @@ applicationError range =
             , "When you apply the eta reduction, you can remove the list argument and the last argument of the List.map function : \" incList = List.map inc\""
             ]
         }
-        range
+        (Node.range node)
+
+
+moduleError : Context -> Error {}
+moduleError context =
+    Rule.error
+        { message = "Possible eta reduction detected"
+        , details =
+            (if context.applCount > 0 then
+                [ "I found " ++ String.fromInt context.applCount ++ " function(s) with applicable eta reduction" ]
+
+             else
+                []
+            )
+                ++ (if context.lambdaCount > 0 then
+                        [ "I found " ++ String.fromInt context.lambdaCount ++ " lambda expression(s) with applicable eta reduction" ]
+
+                    else
+                        []
+                   )
+        }
+        globalRange
