@@ -10,6 +10,7 @@ import Elm.Syntax.Declaration as Declaration exposing (Declaration)
 import Elm.Syntax.Expression as Expression exposing (Expression, Function, FunctionImplementation)
 import Elm.Syntax.Node as Node exposing (Node(..))
 import Elm.Syntax.Pattern as Pattern exposing (Pattern)
+import Elm.Syntax.Range exposing (Location, Range)
 import List.Extra
 import Review.Rule as Rule exposing (Error, Rule)
 
@@ -35,55 +36,64 @@ import Review.Rule as Rule exposing (Error, Rule)
         map inc
 
 -}
-rule : Rule
-rule =
+globalRange : Range
+globalRange =
+    Range (Location 0 0) (Location 0 0)
+
+
+rule : Bool -> Rule
+rule withLocation =
     Rule.newModuleRuleSchema "UseEtaReductions" ()
-        |> Rule.withSimpleExpressionVisitor expressionVisitor
-        |> Rule.withSimpleDeclarationVisitor declarationVisitor
+        |> Rule.withSimpleExpressionVisitor (expressionVisitor withLocation)
+        |> Rule.withSimpleDeclarationVisitor (declarationVisitor withLocation)
         |> Rule.fromModuleRuleSchema
 
 
-expressionVisitor : Node Expression -> List (Error {})
-expressionVisitor node =
+expressionVisitor : Bool -> Node Expression -> List (Error {})
+expressionVisitor withLocation node =
     case Node.value node of
         Expression.LambdaExpression lambda ->
-            errorsForLambda node lambda
+            errorsForLambda withLocation node lambda
 
         _ ->
             []
 
 
-declarationVisitor : Node Declaration -> List (Error {})
-declarationVisitor node =
+declarationVisitor : Bool -> Node Declaration -> List (Error {})
+declarationVisitor withLocation node =
     case Node.value node of
         Declaration.FunctionDeclaration fn ->
-            errorsForFunction fn
+            errorsForFunction withLocation fn
 
         _ ->
             []
 
 
-errorsForFunction : Function -> List (Error {})
-errorsForFunction { declaration } =
-    errorsFunctionImplementation declaration
+errorsForFunction : Bool -> Function -> List (Error {})
+errorsForFunction withLocation { declaration } =
+    errorsFunctionImplementation withLocation declaration
 
 
-errorsFunctionImplementation : Node FunctionImplementation -> List (Error {})
-errorsFunctionImplementation (Node _ { expression, arguments }) =
+errorsFunctionImplementation : Bool -> Node FunctionImplementation -> List (Error {})
+errorsFunctionImplementation withLocation (Node _ { expression, arguments }) =
     case Node.value expression of
         Expression.Application list ->
-            errorsForApplication expression (List.Extra.last list) (List.Extra.last arguments)
+            errorsForApplication withLocation expression (List.Extra.last list) (List.Extra.last arguments)
 
         _ ->
             []
 
 
-errorsForApplication : Node Expression -> Maybe (Node Expression) -> Maybe (Node Pattern) -> List (Error {})
-errorsForApplication node expression pattern =
+errorsForApplication : Bool -> Node Expression -> Maybe (Node Expression) -> Maybe (Node Pattern) -> List (Error {})
+errorsForApplication withLocation node expression pattern =
     case ( expression, pattern ) of
         ( Just exp, Just pat ) ->
             if equal exp pat then
-                [ applicationError node ]
+                if withLocation then
+                    [ applicationError (Node.range node) ]
+
+                else
+                    [ applicationError globalRange ]
 
             else
                 []
@@ -92,15 +102,19 @@ errorsForApplication node expression pattern =
             []
 
 
-errorsForLambda : Node Expression -> Expression.Lambda -> List (Error {})
-errorsForLambda node { expression, args } =
+errorsForLambda : Bool -> Node Expression -> Expression.Lambda -> List (Error {})
+errorsForLambda withLocation node { expression, args } =
     case List.Extra.last args of
         Nothing ->
             []
 
         Just arg ->
             if equal expression arg then
-                [ lambdaError node ]
+                if withLocation then
+                    [ lambdaError (Node.range node) ]
+
+                else
+                    [ lambdaError globalRange ]
 
             else
                 []
@@ -124,8 +138,8 @@ equal expression pattern =
             False
 
 
-lambdaError : Node Expression -> Error {}
-lambdaError node =
+lambdaError : Range -> Error {}
+lambdaError range =
     Rule.error
         { message = "Possible eta reduction for labmda detected."
         , details =
@@ -133,11 +147,11 @@ lambdaError node =
             , "Iamgine you have a lambda like \"(\\e -> inc e\", then you can just write \"inc\""
             ]
         }
-        (Node.range node)
+        range
 
 
-applicationError : Node Expression -> Error {}
-applicationError node =
+applicationError : Range -> Error {}
+applicationError range =
     Rule.error
         { message = "Possible eta reduction detected."
         , details =
@@ -146,4 +160,4 @@ applicationError node =
             , "When you apply the eta reduction, you can remove the list argument and the last argument of the List.map function : \" incList = List.map inc\""
             ]
         }
-        (Node.range node)
+        range
