@@ -70,11 +70,11 @@ errorsForDeclaration config { arguments, expression, name } =
 
     else
         errorsForArguments config.threshold arguments
-            ++ errorsForExpession config.threshold expression
+            ++ errorsForExpression config.threshold expression
 
 
-errorsForExpession : Int -> Node Expression -> List (Error {})
-errorsForExpession threshold node =
+errorsForExpression : Int -> Node Expression -> List (Error {})
+errorsForExpression threshold node =
     if List.length (used node) >= threshold then
         [ ruleError threshold node ]
 

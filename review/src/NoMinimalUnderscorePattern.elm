@@ -65,7 +65,7 @@ rule threshold =
 
 
 
--- Module Visitorz
+-- Module Visitor
 
 
 moduleVisitor : Rule.ModuleRuleSchema schemaState ModuleContext -> Rule.ModuleRuleSchema { schemaState | hasAtLeastOneVisitor : () } ModuleContext

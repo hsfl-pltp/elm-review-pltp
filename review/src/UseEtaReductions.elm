@@ -215,7 +215,7 @@ equal expression pattern =
 lambdaError : Node Expression -> Error {}
 lambdaError node =
     Rule.error
-        { message = "Possible eta reduction for labmda expression detected"
+        { message = "Possible eta reduction for lambda expression detected"
         , details =
             [ "If the final argument of a lambda expression is the final argument applied to the expression on the right-hand side of the lambda expression, then you can remove both. For example, imagine you have a lambda expression like `\\x -> inc x`, then you can just use `inc` instead."
             ]

@@ -1,6 +1,6 @@
 module UseConstantsForStyle exposing (rule)
 
-{-|
+{-| Forbids the use of ungrouped style elements
 
 @docs rule
 
@@ -15,7 +15,7 @@ import Review.ModuleNameLookupTable as ModuleNameLookupTable exposing (ModuleNam
 import Review.Rule as Rule exposing (Error, Rule)
 
 
-{-| Reports... REPLACEME
+{-| Reports the use of ungrouped style elements
 
     config =
         [ UseConstantsForStyle.rule
