@@ -22,6 +22,15 @@ type Key
     = Up
     | Down
 
+fromKey : Key -> String
+fromKey key =
+    case key of
+        Up ->
+            "Up"
+
+        _ ->
+            "Down"
+
 
 toKey : String -> Key
 toKey string =

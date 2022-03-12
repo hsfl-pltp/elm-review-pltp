@@ -19,8 +19,10 @@ buttonStyle =
     [ class "button-primary" ]
 
 
-type MyType
-    = Value String
+
+type Test
+    = Test1 Bool
+    | Test2 Int
 
 
 foo : Int -> String

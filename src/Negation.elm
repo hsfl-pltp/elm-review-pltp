@@ -3,7 +3,7 @@ module Negation exposing (..)
 
 foo : Int -> Int -> Bool
 foo a b =
-    not (a == (+) b 3 || b >= -(a + b))
+    not (a == b + 3 || b >= -(a + b))
 
 
 bar : Int -> Int -> Bool
@@ -34,6 +34,11 @@ func2 a b =
         )
 
 
+add : Int -> Int -> Int
+add =
+    (+)
+
+
 func3 : Int -> Int -> Bool
 func3 a b =
     not (add a b > a)
@@ -41,7 +46,7 @@ func3 a b =
 
 func4 : Int -> Int -> Bool
 func4 a b =
-    not (List.foldl add 0 [ a, b ] > (+) -9 4)
+    not (List.foldl add 0 [ a, b ] > (-9 + 4))
 
 
 func5 : Bool -> Bool -> Bool
@@ -71,5 +76,5 @@ type alias TypeFunc8 =
 
 
 helpFunc8 : TypeFunc8 -> Bool
-helpFunc8 tf =
+helpFunc8 _ =
     False

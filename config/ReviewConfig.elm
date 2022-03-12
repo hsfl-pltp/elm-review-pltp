@@ -55,8 +55,6 @@ config =
         { operators = []
         , functions =
             [ "List.map"
-            , "Html.Attributes.class"
-            , "Maybe.withDefault"
             , "Decode.andThen"
             ]
         , letIn = False
@@ -65,10 +63,10 @@ config =
         }
     , NoImportingEverything.rule []
     , NoMinimalRecordAccess.rule
-        { threshold = 2
+        { threshold = 3
         , ignoreFunctions = [ "subscriptions" ]
         }
-    , NoMinimalUnderscorePattern.rule 4
+    , NoMinimalUnderscorePattern.rule 3
     , NoMissingTypeAnnotation.rule
     , NoNegationOfBooleanOperator.rule
     , NoSinglePatternCase.rule
