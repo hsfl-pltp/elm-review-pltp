@@ -67,10 +67,10 @@ errorsForCases list =
 patternError : Node Pattern -> Error {}
 patternError node =
     Rule.error
-        { message = "No case for one constructor types"
+        { message = "No case for single one constructor types"
         , details =
-            [ "When a custom type has only one constructor, you can move the pattern matching into the function defintion."
-            , "For example: We define a type \"type Action = Action Int\". To get the value constructor you can write a function like \"run (Action x) = x\""
+            [ "When an algebraic data type has only a single constructor, you can move the pattern matching into the function definition."
+            , "For example, if you consider a type `type Items = Items Int`, to access the `Int` value you can define a function as `count (Items n) = n`"
             ]
         }
         (Node.range node)

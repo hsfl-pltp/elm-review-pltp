@@ -113,7 +113,7 @@ errorsForDeclaration node =
         Declaration.CustomTypeDeclaration { constructors } ->
             constructors
                 |> List.filter hasValueConstructor
-                |> List.map (ruleError "algebraic data type")
+                |> List.map (ruleError "algebraic data types")
 
         _ ->
             []
@@ -154,7 +154,7 @@ errorsForFeature forbidden feature node =
 
 errorsForLetIn : Bool -> Node Expression -> List (Error {})
 errorsForLetIn isEnabled =
-    toErrorsIfForbidden isEnabled (ruleError "let .. in ..")
+    toErrorsIfForbidden isEnabled (ruleError "let ... in ...")
 
 
 toErrorsIfForbidden : Bool -> (Node a -> Error {}) -> Node a -> List (Error {})
@@ -169,9 +169,9 @@ toErrorsIfForbidden isForbidden toError node =
 ruleError : String -> Node a -> Error {}
 ruleError feature node =
     Rule.error
-        { message = "The use of " ++ feature ++ " is forbidden!"
+        { message = "Advanced feature detected"
         , details =
-            [ "You have to solve the problem in another way..."
+            [ "The use of " ++ feature ++ " is not allowed until this feature has been discussed in the lecture. You have to solve the problem in another way..."
             ]
         }
         (Node.range node)

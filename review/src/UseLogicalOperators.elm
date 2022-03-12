@@ -94,10 +94,9 @@ errorsForIf parent thenExpression elseExpression lookupTable =
 error : Node Expression -> String -> Error {}
 error node operator =
     Rule.error
-        { message = "Use boolean expression instead of if"
+        { message = "Use boolean operator instead of if"
         , details =
-            [ "When exactly one branch in an if-Block returns a boolean value, you should write a boolean expression instead"
-            , "In this case I suggest a simple expression using \"" ++ operator ++ "\""
+            [ "Instead of reimplementing a boolean operator using `if` you can use the corresponding boolean operator. In this case I suggest a rewrite using `" ++ operator ++ "`."
             ]
         }
         (Node.range node)

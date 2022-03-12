@@ -88,10 +88,9 @@ errorsForTopLevelExpose node =
 exposeError : Node TopLevelExpose -> String -> Error {}
 exposeError node func =
     Rule.error
-        { message = "This is not an qualified import: " ++ func
+        { message = "Function " ++ func ++ " should be used qualified"
         , details =
-            [ "A qualified import is a import, only exposing Types, like  \"import Foo exposing (MyCustomType)\""
-            , "This make it easier to determine from which module the function is coming from."
+            [ "A function is used qualified if it is prefixed with the module it is imported from. That is, instead of calling `map` you should use `List.map`, for example. This makes it easier to determine the module the function is coming from. Many Elm functions use short names that additionally support this style of use."
             ]
         }
         (Node.range node)

@@ -215,10 +215,9 @@ equal expression pattern =
 lambdaError : Node Expression -> Error {}
 lambdaError node =
     Rule.error
-        { message = "Possible eta reduction for labmda detected."
+        { message = "Possible eta reduction for labmda expression detected"
         , details =
-            [ "When the last argument of a lambda is the last applied to your epxression, then you should remove both"
-            , "Iamgine you have a lambda like \"(\\e -> inc e\", then you can just write \"inc\""
+            [ "If the final argument of a lambda expression is the final argument applied to the expression on the right-hand side of the lambda expression, then you can remove both. For example, imagine you have a lambda expression like `\\x -> inc x`, then you can just use `inc` instead."
             ]
         }
         (Node.range node)
@@ -227,11 +226,9 @@ lambdaError node =
 applicationError : Node Expression -> Error {}
 applicationError node =
     Rule.error
-        { message = "Possible eta reduction detected."
+        { message = "Possible eta reduction detected"
         , details =
-            [ "When the last argument of a function is the last applied to your expression, then you should remove both"
-            , "Imagine you have a function with the signature incList : List Int -> List Int, with the implementation \"incList list = List.map inc list\""
-            , "When you apply the eta reduction, you can remove the list argument and the last argument of the List.map function : \" incList = List.map inc\""
+            [ "If the final argument of a function definition is the final argument applied to the expression on the right-hand side of the function definition, then you can remove both. For example, imagine you have a function with the signature `incList : List Int -> List Int` and the definition `incList list = List.map inc list`. If you apply an eta reduction, you can remove the list argument and the final argument of `List.map` and get `incList = List.map inc`"
             ]
         }
         (Node.range node)

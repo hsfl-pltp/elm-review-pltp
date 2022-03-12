@@ -246,10 +246,9 @@ isFromHtmlModule name =
 ruleError : Node Expression -> Error {}
 ruleError node =
     Rule.error
-        { message = "Group styles into a constant"
+        { message = "Group styles into constants"
         , details =
-            [ "To structure your code, you should use a constant for styles"
-            , "Move all attributes for style, into a constant. For Example \"myStyle = [ style ..., style...]\""
+            [ "To structure your code you should use a constant for styles. Move all style attributes into constants. For example, use `header = [ style ..., style ... ]`"
             ]
         }
         (Node.range node)

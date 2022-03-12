@@ -60,9 +60,9 @@ errorsForDeclaration { name } =
 nameError : Node String -> Error {}
 nameError (Node range value) =
     Rule.error
-        { message = "This is not a good function name: " ++ value
+        { message = "Function name can be improved: " ++ value
         , details =
-            [ "The name get, comes from imperative programming, a more expressive name would be without get"
+            [ "Using the prefix `get` is a practice from object-oriented programming. In functional programming the `get` prefix is usually omitted."
             ]
         }
         range

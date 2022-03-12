@@ -77,10 +77,9 @@ errorsForModuleName (Node range moduleName) =
 importError : Range -> String -> Error {}
 importError range name =
     Rule.error
-        { message = "Import of core module found : " ++ name
+        { message = "Import of core module detected: " ++ name
         , details =
-            [ "The import of a core module is not necessary, because they are imported by default."
-            , "For a list of all default imports take a look at https://package.elm-lang.org/packages/elm/core/latest/."
+            [ "The import of a core module is not necessary because it is imported implicitly anyway. For a list of all core modules and how they imported implicitly take a look at https://package.elm-lang.org/packages/elm/core/latest/."
             ]
         }
         range

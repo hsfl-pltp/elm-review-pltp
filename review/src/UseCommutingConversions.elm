@@ -131,7 +131,7 @@ ifError node =
     Rule.error
         { message = "Possible commuting conversion for if detected"
         , details =
-            [ "An expression in the form \"if a then f b else f c\" should be written as \"f(if a then b else c)\""
+            [ "An expression of the form `if a then f b else f c` can be written as `f (if a then b else c)`"
             ]
         }
         (Node.range node)
@@ -142,7 +142,7 @@ caseErrors node =
     Rule.error
         { message = "Possible commuting conversion for case detected"
         , details =
-            [ "An expression in the form \"case e of p1 -> f e1 ... pn -> f en\" should be written as \"f (case e of p1 -> e1 ... pn -> en)\""
+            [ "An expression of the form `case e of p1 -> f e1 ... pn -> f en` can be written as `f (case e of p1 -> e1 ... pn -> en)`"
             ]
         }
         (Node.range node)

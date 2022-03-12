@@ -113,10 +113,10 @@ errorsForOperator parent expr =
 notError : Node Expression -> Error {}
 notError node =
     Rule.error
-        { message = "Possibility to apply De Morgan's law detected."
+        { message = "Possibility to apply De Morgan's law detected"
         , details =
-            [ "When you apply De Morgan's law, you don't need \"not\"."
-            , "If you don't remember the law, here is a little example: \"not (a && b) = not a || not b\""
+            [ "If you apply one of De Morgan's laws, the expression that is negated becomes less complex."
+            , "If you don't remember the laws, here are little examples:\n`not (a && b) = not a || not b`\n`not (a || b) = not a && not b`"
             ]
         }
         (Node.range node)

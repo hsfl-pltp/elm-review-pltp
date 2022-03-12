@@ -181,7 +181,7 @@ errorsForPattern node patterns context =
         all =
             allConstructors used context.customTypes
     in
-    if (List.length all - List.length used) <= context.threshold then
+    if List.length all - List.length used < context.threshold then
         [ ruleError context.threshold node used all ]
 
     else
@@ -240,17 +240,31 @@ namedPattern node =
 
 ruleError : Int -> Node a -> List ( ModuleName, String ) -> List String -> Error {}
 ruleError threshold node used all =
+    let
+        pluralForm word n =
+            case n of
+                1 ->
+                    word
+
+                _ ->
+                    word ++ "s"
+
+        noCases =
+            List.length all - List.length used
+    in
     Rule.error
-        { message = "To less covered cases by the underscore pattern, at lest " ++ String.fromInt threshold ++ " cases should be covered!"
+        { message = "Underscore pattern that covers too few cases detected"
         , details =
-            [ "The underscore pattern should be used with care."
-            , "You only covered "
-                ++ String.fromInt (List.length used)
-                ++ " of "
-                ++ String.fromInt (List.length all)
-                ++ " cases!"
-            , "When you extend your custom type, then the new constructor will not be covered in the case expression."
-            , "I suggest, when your custom type has less then " ++ String.fromInt threshold ++ " constructors, you should not use the underscore pattern"
+            [ "The underscore pattern should be used with care. If you extend the algebraic data type, the program will still work although the new case is probably not handled correctly."
+            , "This underscore covers "
+                ++ String.fromInt noCases
+                ++ " "
+                ++ pluralForm "case" noCases
+                ++ ". I suggest that you only use an underscore pattern if it covers at least "
+                ++ String.fromInt threshold
+                ++ " "
+                ++ pluralForm "case" threshold
+                ++ "."
             ]
         }
         (Node.range node)

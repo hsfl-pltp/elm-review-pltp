@@ -76,7 +76,7 @@ errorsForDeclaration config { arguments, expression, name } =
 errorsForExpession : Int -> Node Expression -> List (Error {})
 errorsForExpession threshold node =
     if List.length (used node) >= threshold then
-        [ accessError threshold node ]
+        [ ruleError threshold node ]
 
     else
         []
@@ -128,7 +128,7 @@ errorsForArguments : Int -> List (Node Pattern) -> List (Error {})
 errorsForArguments threshold patterns =
     patterns
         |> List.filter (invalidPattern threshold)
-        |> List.map (destructingError threshold)
+        |> List.map (ruleError threshold)
 
 
 invalidPattern : Int -> Node Pattern -> Bool
@@ -141,22 +141,12 @@ invalidPattern threshold node =
             False
 
 
-destructingError : Int -> Node Pattern -> Error {}
-destructingError threshold node =
+ruleError : Int -> Node a -> Error {}
+ruleError threshold node =
     Rule.error
-        { message = "To few components used from record destructing"
+        { message = "Unnecessary complex record argument detected."
         , details =
-            [ "If you destruct " ++ String.fromInt threshold ++ "or less components from a record, then you sould give the components as parameters to you function"
-            , "For example, the record {name: String, age: Int}. The components name and age should be given as arguments to the function."
+            [ "If a function receives a record as an argument and the function uses " ++ String.fromInt threshold ++ " or less fields from a record, then you should pass the fields as individual arguments to the function."
             ]
-        }
-        (Node.range node)
-
-
-accessError : Int -> Node Expression -> Error {}
-accessError threshold node =
-    Rule.error
-        { message = "To few compoents used in record access"
-        , details = [ "If you use " ++ String.fromInt threshold ++ " or less components from a record, you should move the components as arguments to the function" ]
         }
         (Node.range node)

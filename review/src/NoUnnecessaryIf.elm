@@ -91,11 +91,9 @@ errorsForIf parent left right lookupTable =
 ifError : Node Expression -> Error {}
 ifError node =
     Rule.error
-        { message = "This is an unnecessary if."
+        { message = "Unnecessary if detected"
         , details =
-            [ "An if expression with True and False as results, the result is the expression itself."
-            , "For Example: \"if b then True else False\" is the same as \"b\""
-            , "But carefully, when the expression is \"if b then False else True\", the replacement is \"not b\""
+            [ "Instead of an `if` expression that yields `True` and `False` in its branches you can use the boolean expression itself. For example, `if b then True else False` is the same as `b`."
             ]
         }
         (Node.range node)

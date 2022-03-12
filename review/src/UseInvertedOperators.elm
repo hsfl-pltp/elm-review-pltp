@@ -118,7 +118,7 @@ errorsForOperator parent expr =
         Expression.OperatorApplication operator _ _ _ ->
             case transformOperator operator of
                 Just transformed ->
-                    [ notError parent transformed ]
+                    [ notError parent operator transformed ]
 
                 Nothing ->
                     []
@@ -152,13 +152,12 @@ transformOperator operator =
             Nothing
 
 
-notError : Node Expression -> String -> Error {}
-notError node transformed =
+notError : Node Expression -> String -> String -> Error {}
+notError node operator transformed =
     Rule.error
-        { message = "Use inverted operator instead of not."
+        { message = "Use negated operator instead of not"
         , details =
-            [ "In this case you should remove the Negation and use the negated operator."
-            , "Try to find an expression with \"" ++ transformed ++ "\"."
+            [ "You can remove the negation and use the negated operator instead. For example, in this case you can use `" ++ transformed ++ "` instead of `" ++ operator ++ "`."
             ]
         }
         (Node.range node)
