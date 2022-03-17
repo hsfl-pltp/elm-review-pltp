@@ -1,4 +1,4 @@
-module NoSinglePatternCase exposing (rule)
+module NoSinglePatternCaseLocal exposing (rule)
 
 {-| Forbids the use of case expressions for a custom type with only one constructor
 
@@ -38,7 +38,7 @@ import Review.Rule as Rule exposing (Error, Rule)
 -}
 rule : Rule
 rule =
-    Rule.newModuleRuleSchema "NoSinglePatternCase" ()
+    Rule.newModuleRuleSchema "NoSinglePatternCaseLocal" ()
         -- Add your visitors
         |> Rule.withSimpleExpressionVisitor expressionVisitor
         |> Rule.fromModuleRuleSchema

@@ -8,7 +8,6 @@ Please do not change anything here!
 
 import Import.NoCoreModule
 import Import.NoUnqualified
-import NoBooleanComparison
 import NoDebug.Log
 import NoDebug.TodoOrToString
 import NoExposingEverything
@@ -18,8 +17,9 @@ import NoMinimalRecordAccess
 import NoMinimalUnderscorePattern
 import NoMissingTypeAnnotation
 import NoNegationOfBooleanOperator
+import NoPrimitiveTypeAlias
 import NoSinglePatternCase
-import NoUnnecessaryIf
+import NoSinglePatternCaseLocal
 import NoUnused.CustomTypeConstructors
 import NoUnused.Dependencies
 import NoUnused.Exports
@@ -28,6 +28,7 @@ import NoUnused.Parameters
 import NoUnused.Patterns
 import NoUnused.Variables
 import Review.Rule exposing (Rule)
+import Simplify
 import UseCamelCase
 import UseCommutingConversions
 import UseConstantsForStyle
@@ -47,7 +48,6 @@ config =
         , "Svg"
         , "Svg.Attributes"
         ]
-    , NoBooleanComparison.rule
     , NoDebug.Log.rule
     , NoDebug.TodoOrToString.rule
     , NoExposingEverything.rule
@@ -69,8 +69,9 @@ config =
     , NoMinimalUnderscorePattern.rule 3
     , NoMissingTypeAnnotation.rule
     , NoNegationOfBooleanOperator.rule
-    , NoSinglePatternCase.rule
-    , NoUnnecessaryIf.rule
+    , NoPrimitiveTypeAlias.rule
+    , NoSinglePatternCase.rule NoSinglePatternCase.fixInArgument
+    , NoSinglePatternCaseLocal.rule
     , NoUnused.CustomTypeConstructors.rule []
     , NoUnused.Dependencies.rule
     , NoUnused.Exports.rule
@@ -78,6 +79,7 @@ config =
     , NoUnused.Parameters.rule
     , NoUnused.Patterns.rule
     , NoUnused.Variables.rule
+    , Simplify.rule Simplify.defaults
     , UseCommutingConversions.rule
     , UseConstantsForStyle.rule
     , UseCamelCase.rule UseCamelCase.default

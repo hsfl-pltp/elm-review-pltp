@@ -7,12 +7,15 @@
     "elm-version": "0.19.1",
     "dependencies": {
         "direct": {
+            "SiriusStarr/elm-review-no-single-pattern-case": "2.0.1",
+            "dillonkearns/elm-review-no-primitive-type-alias": "1.0.0",
             "elm/browser": "1.0.2",
             "elm/core": "1.0.5",
             "elm/html": "1.0.0",
             "jfmengels/elm-review": "2.7.0",
             "jfmengels/elm-review-common": "1.2.0",
             "jfmengels/elm-review-debug": "1.0.6",
+            "jfmengels/elm-review-simplify": "2.0.8",
             "jfmengels/elm-review-unused": "1.1.20",
             "sparksp/elm-review-camelcase": "1.1.0",
             "stil4m/elm-syntax": "7.2.9"
@@ -25,7 +28,9 @@
             "elm/time": "1.0.0",
             "elm/url": "1.0.0",
             "elm/virtual-dom": "1.0.2",
+            "elm-community/dict-extra": "2.4.0",
             "elm-community/list-extra": "8.5.2",
+            "elm-community/maybe-extra": "5.3.0",
             "elm-explorations/test": "1.2.2",
             "miniBill/elm-unicode": "1.0.2",
             "rtfeldman/elm-hex": "1.0.0",
