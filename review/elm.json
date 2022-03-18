@@ -13,9 +13,11 @@
             "elm/core": "1.0.5",
             "elm/html": "1.0.0",
             "jfmengels/elm-review": "2.7.0",
+            "jfmengels/elm-review-code-style": "1.0.0",
             "jfmengels/elm-review-common": "1.2.0",
             "jfmengels/elm-review-debug": "1.0.6",
             "jfmengels/elm-review-simplify": "2.0.8",
+            "jfmengels/elm-review-the-elm-architecture": "1.0.3",
             "jfmengels/elm-review-unused": "1.1.20",
             "sparksp/elm-review-camelcase": "1.1.0",
             "stil4m/elm-syntax": "7.2.9"
