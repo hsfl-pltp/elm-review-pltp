@@ -18,8 +18,9 @@ import NoMinimalUnderscorePattern
 import NoMissingTypeAnnotation
 import NoNegationOfBooleanOperator
 import NoPrimitiveTypeAlias
+import NoRecursiveUpdate
+import NoSimpleLetBody
 import NoSinglePatternCase
-import NoSinglePatternCaseLocal
 import NoUnused.CustomTypeConstructors
 import NoUnused.Dependencies
 import NoUnused.Exports
@@ -27,6 +28,7 @@ import NoUnused.Modules
 import NoUnused.Parameters
 import NoUnused.Patterns
 import NoUnused.Variables
+import NoUselessSubscriptions
 import Review.Rule exposing (Rule)
 import Simplify
 import UseCamelCase
@@ -70,8 +72,9 @@ config =
     , NoMissingTypeAnnotation.rule
     , NoNegationOfBooleanOperator.rule
     , NoPrimitiveTypeAlias.rule
+    , NoRecursiveUpdate.rule
+    , NoSimpleLetBody.rule
     , NoSinglePatternCase.rule NoSinglePatternCase.fixInArgument
-    , NoSinglePatternCaseLocal.rule
     , NoUnused.CustomTypeConstructors.rule []
     , NoUnused.Dependencies.rule
     , NoUnused.Exports.rule
@@ -79,6 +82,7 @@ config =
     , NoUnused.Parameters.rule
     , NoUnused.Patterns.rule
     , NoUnused.Variables.rule
+    , NoUselessSubscriptions.rule
     , Simplify.rule Simplify.defaults
     , UseCommutingConversions.rule
     , UseConstantsForStyle.rule
