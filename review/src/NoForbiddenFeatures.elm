@@ -171,7 +171,8 @@ ruleError feature node =
     Rule.error
         { message = "Advanced feature detected"
         , details =
-            [ "The use of " ++ feature ++ " is not allowed until this feature has been discussed in the lecture. You have to solve the problem in another way..."
+            [ "The use of " ++ feature ++ " is not allowed. You have to solve the problem in another way..."
+            , "Find out why: https://hsfl-pltp.github.io/elm-review-pltp/"
             ]
         }
         (Node.range node)
