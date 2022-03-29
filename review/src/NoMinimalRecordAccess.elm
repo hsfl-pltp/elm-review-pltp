@@ -1,152 +1,138 @@
-module NoMinimalRecordAccess exposing
-    ( rule
-    , Config
-    )
+module NoMinimalRecordAccess exposing (rule)
 
-{-| Forbids the use of a record, when only a few components from the record is used
-
-@docs rule
-
--}
-
-import Elm.Syntax.Declaration as Declaration exposing (Declaration(..))
-import Elm.Syntax.Expression as Expression exposing (Expression, FunctionImplementation)
-import Elm.Syntax.Node as Node exposing (Node(..))
-import Elm.Syntax.Pattern as Pattern exposing (Pattern)
-import List.Extra
+import Dict exposing (Dict)
+import Elm.Syntax.Declaration as Declaration exposing (Declaration)
+import Elm.Syntax.Expression exposing (Expression)
+import Elm.Syntax.Node as Node exposing (Node)
+import Elm.Syntax.TypeAnnotation as TypeAnnotation exposing (TypeAnnotation(..))
 import Review.Rule as Rule exposing (Error, Rule)
 
 
-{-| Reports the use of records , where only a few components are used.
-
-    config =
-        [ NoMinimalRecordDestructing.rule 1
-        ]
-
-
-## Fail
-
-    type alias Person = {age : Int, name : String}
-
-    viewAge { age } =
-        ...
-
-    viewAge person =
-
-
-## Success
-
-    viewAge age =
-        ...
-
--}
-type alias Config =
-    { threshold : Int
-    , ignoreFunctions : List String
+type alias Context =
+    { recordAliases : Dict String Int
+    , usedRecords : Dict String Int
+    , isInFunctionWithRecord : Bool
     }
 
 
-rule : Config -> Rule
-rule config =
-    Rule.newModuleRuleSchema "NoMinimalRecordAccess" ()
-        |> Rule.withSimpleDeclarationVisitor (declarationVisitor config)
+initialContext : Context
+initialContext =
+    { recordAliases = Dict.empty
+    , usedRecords = Dict.empty
+    , isInFunctionWithRecord = False
+    }
+
+
+rule : Rule
+rule =
+    Rule.newModuleRuleSchema "NoMinimalRecordAccess" initialContext
+        |> Rule.withDeclarationListVisitor declarationListVisitor
+        |> Rule.withDeclarationEnterVisitor declarationVisitor
+        |> Rule.withExpressionEnterVisitor expressionVisitor
+        |> Rule.withFinalModuleEvaluation finalEvaluation
         |> Rule.fromModuleRuleSchema
 
 
-declarationVisitor : Config -> Node Declaration -> List (Error {})
-declarationVisitor config node =
+declarationListVisitor : List (Node Declaration) -> Context -> ( List (Error {}), Context )
+declarationListVisitor declarations context =
+    let
+        all =
+            declarations
+                |> List.filterMap customRecords
+                |> Dict.fromList
+
+        used =
+            Dict.map (\_ _ -> 0) all
+    in
+    ( [], { context | recordAliases = all, usedRecords = used } )
+
+
+customRecords : Node Declaration -> Maybe ( String, Int )
+customRecords node =
     case Node.value node of
-        Declaration.FunctionDeclaration { declaration } ->
-            errorsForDeclaration config (Node.value declaration)
+        Declaration.AliasDeclaration { name, typeAnnotation } ->
+            case Node.value typeAnnotation of
+                TypeAnnotation.Record recDef ->
+                    Just ( Node.value name, List.length recDef )
+
+                _ ->
+                    Nothing
 
         _ ->
-            []
+            Nothing
 
 
-errorsForDeclaration : Config -> FunctionImplementation -> List (Error {})
-errorsForDeclaration config { arguments, expression, name } =
-    if List.member (Node.value name) config.ignoreFunctions then
-        []
-
-    else
-        errorsForArguments config.threshold arguments
-            ++ errorsForExpression config.threshold expression
-
-
-errorsForExpression : Int -> Node Expression -> List (Error {})
-errorsForExpression threshold node =
-    if List.length (used node) >= threshold then
-        [ ruleError threshold node ]
-
-    else
-        []
-
-
-used : Node Expression -> List String
-used node =
-    node
-        |> accessed
-        |> List.Extra.unique
-
-
-accessed : Node Expression -> List String
-accessed node =
+declarationVisitor : Node Declaration -> Context -> ( List (Error {}), Context )
+declarationVisitor node context =
     case Node.value node of
-        Expression.RecordAccess expr (Node _ name) ->
-            [ toRecordString (Node.value expr) name ]
+        Declaration.FunctionDeclaration { declaration, signature } ->
+            case signature of
+                Just sig ->
+                    ( []
+                    , { context
+                        | isInFunctionWithRecord =
+                            sig
+                                |> Node.value
+                                |> .typeAnnotation
+                                |> hasRecordInTypeAnnotation context
+                      }
+                    )
 
-        Expression.Application expressions ->
-            List.concatMap used expressions
-
-        Expression.OperatorApplication _ _ left right ->
-            List.concatMap used [ left, right ]
-
-        Expression.IfBlock expr left right ->
-            List.concatMap used [ expr, left, right ]
-
-        Expression.CaseExpression { expression, cases } ->
-            List.concatMap used (expression :: List.map Tuple.second cases)
-
-        Expression.ListExpr expressions ->
-            List.concatMap used expressions
+                Nothing ->
+                    ( [], context )
 
         _ ->
-            []
+            ( [], context )
 
 
-toRecordString : Expression -> String -> String
-toRecordString expression name =
-    case expression of
-        Expression.FunctionOrValue [] record ->
-            record ++ "." ++ name
-
-        _ ->
-            name
-
-
-errorsForArguments : Int -> List (Node Pattern) -> List (Error {})
-errorsForArguments threshold patterns =
-    patterns
-        |> List.filter (invalidPattern threshold)
-        |> List.map (ruleError threshold)
-
-
-invalidPattern : Int -> Node Pattern -> Bool
-invalidPattern threshold node =
-    case Node.value node of
-        Pattern.RecordPattern components ->
-            List.length components <= threshold
-
-        _ ->
+hasRecordInTypeAnnotation : Context -> Node TypeAnnotation -> Bool
+hasRecordInTypeAnnotation context annotation =
+    case Node.value annotation of
+        GenericType _ ->
             False
 
+        Typed node nodes ->
+            case nodes of
+                [] ->
+                    Dict.member
+                        (node
+                            |> Node.value
+                            |> Tuple.second
+                        )
+                        context.recordAliases
 
-ruleError : Int -> Node a -> Error {}
-ruleError threshold node =
-    Rule.error
-        { message = "Unnecessary complex record argument detected."
-        , details =
-            [ "If a function receives a record as an argument and the function uses " ++ String.fromInt threshold ++ " or less fields from a record, then you should pass the fields as individual arguments to the function."
-            ]
-        }
-        (Node.range node)
+                _ ->
+                    List.foldl (||) False (List.map (hasRecordInTypeAnnotation context) nodes)
+
+        Unit ->
+            False
+
+        Tupled nodes ->
+            List.foldl (||) False (List.map (hasRecordInTypeAnnotation context) nodes)
+
+        -- hier später nachbessern/inkludieren
+        Record _ ->
+            False
+
+        -- hier später nachbessern/inkludieren
+        GenericRecord _ _ ->
+            False
+
+        FunctionTypeAnnotation left right ->
+            hasRecordInTypeAnnotation context left || hasRecordInTypeAnnotation context right
+
+
+expressionVisitor : Node Expression -> Context -> ( List (Error {}), Context )
+expressionVisitor node context =
+    if context.isInFunctionWithRecord then
+        -- Vorkommen im Context hochzählen
+        ( [], context )
+
+    else
+        ( [], context )
+
+
+finalEvaluation : Context -> List (Error {})
+finalEvaluation context =
+    -- Abgleich der gezählten Vorkommen mit der Gesamtzahl an Feldern in den records
+    []
