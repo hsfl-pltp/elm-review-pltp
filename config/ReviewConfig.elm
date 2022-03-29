@@ -14,6 +14,7 @@ import NoExposingEverything
 import NoForbiddenFeatures
 import NoImportingEverything
 import NoMinimalRecordAccess
+import NoMinimalRecordAccessOld
 import NoMinimalUnderscorePattern
 import NoMissingTypeAnnotation
 import NoNegationOfBooleanOperator
@@ -65,6 +66,7 @@ config =
         }
     , NoImportingEverything.rule []
     , NoMinimalRecordAccess.rule
+    , NoMinimalRecordAccessOld.rule
         { threshold = 3
         , ignoreFunctions = [ "subscriptions" ]
         }
