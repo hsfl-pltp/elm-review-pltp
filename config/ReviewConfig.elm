@@ -38,6 +38,7 @@ import UseEtaReductions exposing (ErrorStyle(..))
 import UseInvertedOperators
 import UseLogicalOperators
 import UseNamingConventions
+import UseRecordUpdate
 
 
 config : List Rule
@@ -88,4 +89,5 @@ config =
     , UseInvertedOperators.rule
     , UseNamingConventions.rule
     , UseLogicalOperators.rule
+    , UseRecordUpdate.rule
     ]
