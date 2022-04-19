@@ -102,13 +102,13 @@ hasRecordInTypeAnnotation context annotation =
                         context.recordAliases
 
                 _ ->
-                    List.foldl (||) False (List.map (hasRecordInTypeAnnotation context) nodes)
+                    List.any (hasRecordInTypeAnnotation context) nodes
 
         Unit ->
             False
 
         Tupled nodes ->
-            List.foldl (||) False (List.map (hasRecordInTypeAnnotation context) nodes)
+            List.any (hasRecordInTypeAnnotation context) nodes
 
         -- hier später nachbessern/inkludieren
         Record _ ->
