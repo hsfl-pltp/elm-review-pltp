@@ -10,3 +10,8 @@ type alias Person =
 viewAge : Person -> String
 viewAge { age } =
     String.fromInt age
+
+
+foo : Person -> Int
+foo a =
+    a.age
