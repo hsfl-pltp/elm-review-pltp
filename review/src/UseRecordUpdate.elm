@@ -1,15 +1,16 @@
 module UseRecordUpdate exposing (rule)
 
 import Elm.Syntax.Declaration as Declaration exposing (Declaration)
-import Elm.Syntax.Expression as Expression exposing (Expression, RecordSetter)
+import Elm.Syntax.Expression as Expression exposing (Expression, FunctionImplementation, RecordSetter)
 import Elm.Syntax.Node as Node exposing (Node)
-import Elm.Syntax.TypeAnnotation as TypeAnnotation exposing (TypeAnnotation(..))
+import Elm.Syntax.Pattern as Pattern exposing (Pattern)
+import Elm.Syntax.TypeAnnotation as TypeAnnotation exposing (TypeAnnotation)
 import Review.Rule as Rule exposing (Error, Rule)
 
 
 rule : Rule
 rule =
-    Rule.newModuleRuleSchema "UseRecordUpdate" { isFunctionWithRecordReturn = False, records = [] }
+    Rule.newModuleRuleSchema "UseRecordUpdate" { isFunctionWithRecordReturn = False, records = [], destructed = [] }
         |> Rule.withDeclarationListVisitor declarationListVisitor
         |> Rule.withDeclarationEnterVisitor declarationVisitor
         |> Rule.withExpressionEnterVisitor expressionVisitor
@@ -19,6 +20,7 @@ rule =
 type alias Context =
     { isFunctionWithRecordReturn : Bool
     , records : List String
+    , destructed : List String
     }
 
 
@@ -42,20 +44,27 @@ recordAlias node =
             Nothing
 
 
-declarationVisitor : Node Declaration -> Context -> ( List nothing, Context )
+declarationVisitor : Node Declaration -> Context -> ( List (Error {}), Context )
 declarationVisitor node context =
     case Node.value node of
         Declaration.FunctionDeclaration function ->
             case function.signature of
-                Just (Node _ sigNode) ->
-                    ( []
-                    , { context
-                        | isFunctionWithRecordReturn =
-                            sigNode.typeAnnotation
+                Just sigNode ->
+                    let
+                        hasToVisit =
+                            Node.value sigNode
+                                |> .typeAnnotation
                                 |> Node.value
                                 |> hasRecordReturnAndRecordParameter context
-                      }
-                    )
+
+                        destructed =
+                            if hasToVisit then
+                                destructedRecordFieldNames function.declaration
+
+                            else
+                                []
+                    in
+                    ( [], { context | isFunctionWithRecordReturn = hasToVisit, destructed = destructed } )
 
                 Nothing ->
                     ( [], { context | isFunctionWithRecordReturn = False } )
@@ -79,30 +88,40 @@ hasRecordReturnAndRecordParameter context typeAnnotation =
     in
     case ( returnMaybe, parametersMaybe ) of
         ( Just return, Just parameters ) ->
-            isRecord context return && List.member return parameters
+            List.member return context.records && List.member return parameters
 
         _ ->
             False
 
 
-functionTypes : TypeAnnotation -> List TypeAnnotation
+functionTypes : TypeAnnotation -> List String
 functionTypes typeAnnotation =
     case typeAnnotation of
         TypeAnnotation.FunctionTypeAnnotation head tail ->
             functionTypes (Node.value head) ++ functionTypes (Node.value tail)
 
-        _ ->
-            [ typeAnnotation ]
-
-
-isRecord : Context -> TypeAnnotation -> Bool
-isRecord context typeAnnotation =
-    case typeAnnotation of
-        Typed node _ ->
-            List.member (Tuple.second (Node.value node)) context.records
+        TypeAnnotation.Typed node _ ->
+            [ Tuple.second (Node.value node) ]
 
         _ ->
-            False
+            []
+
+
+destructedRecordFieldNames : Node FunctionImplementation -> List String
+destructedRecordFieldNames node =
+    Node.value node
+        |> .arguments
+        |> List.concatMap recordFieldsInPattern
+
+
+recordFieldsInPattern : Node Pattern -> List String
+recordFieldsInPattern node =
+    case Node.value node of
+        Pattern.RecordPattern list ->
+            List.map Node.value list
+
+        _ ->
+            []
 
 
 expressionVisitor : Node Expression -> Context -> ( List (Error {}), Context )
@@ -110,7 +129,7 @@ expressionVisitor node context =
     if context.isFunctionWithRecordReturn then
         case Node.value node of
             Expression.RecordExpr list ->
-                if List.any hasUnchangedValue list then
+                if List.any (hasUnchangedValue context) list then
                     ( [ ruleError node ], context )
 
                 else
@@ -123,29 +142,34 @@ expressionVisitor node context =
         ( [], context )
 
 
-hasUnchangedValue : Node RecordSetter -> Bool
-hasUnchangedValue recordSetter =
+hasUnchangedValue : Context -> Node RecordSetter -> Bool
+hasUnchangedValue context recordSetter =
     let
-        ( name, expression ) =
+        ( nameNode, expression ) =
             Node.value recordSetter
+
+        name =
+            Node.value nameNode
     in
-    nameInExpression (Node.value name) expression
-
-
-nameInExpression : String -> Node Expression -> Bool
-nameInExpression name node =
-    case Node.value node of
+    case Node.value expression of
         Expression.Application nodes ->
-            List.any (nameInExpression name) nodes
+            case List.head nodes of
+                Just head ->
+                    case Node.value head of
+                        Expression.RecordAccessFunction access ->
+                            name == access
 
-        Expression.ParenthesizedExpression parenthesized ->
-            nameInExpression name parenthesized
+                        _ ->
+                            False
+
+                _ ->
+                    False
 
         Expression.FunctionOrValue _ fovName ->
-            name == fovName
+            List.member fovName context.destructed && name == fovName
 
-        Expression.RecordAccess _ fNode ->
-            name == Node.value fNode
+        Expression.RecordAccess _ accessNode ->
+            name == Node.value accessNode
 
         Expression.RecordAccessFunction fName ->
             name == fName
