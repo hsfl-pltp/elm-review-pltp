@@ -15,3 +15,13 @@ viewAge { age } =
 foo : Person -> Int
 foo a =
     a.age
+
+
+negative : Person -> ( String, Int )
+negative p =
+    ( p.name, .age p )
+
+
+negative2 : Person -> ( String, Int )
+negative2 { name, age } =
+    ( name, age )

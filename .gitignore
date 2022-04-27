@@ -14,4 +14,5 @@ repl-temp-*
 
 # Node.js
 package-lock.json
+package.json
 node_modules
