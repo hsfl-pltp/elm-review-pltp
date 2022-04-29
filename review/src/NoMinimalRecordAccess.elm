@@ -5,6 +5,7 @@ import Elm.Syntax.Declaration as Declaration exposing (Declaration)
 import Elm.Syntax.Expression as Expression exposing (Expression)
 import Elm.Syntax.Node as Node exposing (Node)
 import Elm.Syntax.Pattern as Pattern exposing (Pattern)
+import Elm.Syntax.Range exposing (Range)
 import Elm.Syntax.TypeAnnotation as TypeAnnotation exposing (TypeAnnotation(..))
 import Review.Rule as Rule exposing (Error, Rule)
 import Set exposing (Set)
@@ -13,7 +14,7 @@ import Set exposing (Set)
 type alias Context =
     { recordAliases : Dict String Int
     , usedRecords : Dict String (Dict String ( String, Set String ))
-    , functionNodes : Dict String (Node Declaration)
+    , functionRanges : Dict String Range
     , currentFunction : Maybe String
     }
 
@@ -22,7 +23,7 @@ initialContext : Context
 initialContext =
     { recordAliases = Dict.empty
     , usedRecords = Dict.empty
-    , functionNodes = Dict.empty
+    , functionRanges = Dict.empty
     , currentFunction = Nothing
     }
 
@@ -88,7 +89,7 @@ declarationVisitor node context =
                                 |> .arguments
 
                         ( funcTypes, destructedErrors ) =
-                            recordParameters context typeAnnotation patterns
+                            recordParameters context.recordAliases typeAnnotation patterns
 
                         dictForRecords =
                             funcTypes
@@ -99,8 +100,8 @@ declarationVisitor node context =
                     , { context
                         | usedRecords =
                             Dict.insert functionName dictForRecords context.usedRecords
-                        , functionNodes =
-                            Dict.insert functionName node context.functionNodes
+                        , functionRanges =
+                            Dict.insert functionName (Node.range node) context.functionRanges
                         , currentFunction =
                             Just functionName
                       }
@@ -113,14 +114,14 @@ declarationVisitor node context =
             ( [], { context | currentFunction = Nothing } )
 
 
-recordParameters : Context -> Node TypeAnnotation -> List (Node Pattern) -> ( List ( String, String ), List (Error {}) )
-recordParameters context node list =
+recordParameters : Dict String Int -> Node TypeAnnotation -> List (Node Pattern) -> ( List ( String, String ), List (Error {}) )
+recordParameters recordAliases node list =
     let
         typesPatterns =
             typesWithPatterns node list
     in
-    ( List.filterMap (undestructedRecordType context) typesPatterns
-    , List.filterMap (destructedRecordPattern context) typesPatterns
+    ( List.filterMap (undestructedRecordType recordAliases) typesPatterns
+    , List.filterMap (destructedRecordPattern recordAliases) typesPatterns
     )
 
 
@@ -147,9 +148,9 @@ typesWithPatterns typeAnnotation list =
             []
 
 
-undestructedRecordType : Context -> ( String, Node Pattern ) -> Maybe ( String, String )
-undestructedRecordType context ( typeName, node ) =
-    if Dict.member typeName context.recordAliases then
+undestructedRecordType : Dict String Int -> ( String, Node Pattern ) -> Maybe ( String, String )
+undestructedRecordType recordAliases ( typeName, node ) =
+    if Dict.member typeName recordAliases then
         case Node.value node of
             Pattern.VarPattern name ->
                 Just ( name, typeName )
@@ -161,11 +162,11 @@ undestructedRecordType context ( typeName, node ) =
         Nothing
 
 
-destructedRecordPattern : Context -> ( String, Node Pattern ) -> Maybe (Error {})
-destructedRecordPattern context ( name, node ) =
+destructedRecordPattern : Dict String Int -> ( String, Node Pattern ) -> Maybe (Error {})
+destructedRecordPattern recordAliases ( name, node ) =
     case Node.value node of
         Pattern.RecordPattern list ->
-            case Dict.get name context.recordAliases of
+            case Dict.get name recordAliases of
                 Just numberOfFields ->
                     if numberOfFields == List.length list then
                         Nothing
@@ -186,14 +187,14 @@ expressionVisitor node context =
         Just functionName ->
             case Node.value node of
                 Expression.RecordAccess recordNode fieldNode ->
-                    ( [], updateUsedRecords context functionName (Node.value recordNode) (Node.value fieldNode) )
+                    ( [], { context | usedRecords = updateUsedRecords context.usedRecords functionName (Node.value recordNode) (Node.value fieldNode) } )
 
-                Expression.Application (fun :: parameters) ->
+                Expression.Application (fun :: arguments) ->
                     case Node.value fun of
                         Expression.RecordAccessFunction field ->
-                            case List.head parameters of
+                            case List.head arguments of
                                 Just recordNode ->
-                                    ( [], updateUsedRecords context functionName (Node.value recordNode) field )
+                                    ( [], { context | usedRecords = updateUsedRecords context.usedRecords functionName (Node.value recordNode) field } )
 
                                 _ ->
                                     ( [], context )
@@ -208,73 +209,66 @@ expressionVisitor node context =
             ( [], context )
 
 
-updateUsedRecords : Context -> String -> Expression -> String -> Context
-updateUsedRecords context functionName record field =
-    case Dict.get functionName context.usedRecords of
+updateUsedRecords : Dict String (Dict String ( String, Set String )) -> String -> Expression -> String -> Dict String (Dict String ( String, Set String ))
+updateUsedRecords usedRecords functionName record field =
+    case Dict.get functionName usedRecords of
         Just recordsInFunction ->
             case record of
                 Expression.FunctionOrValue _ recordName ->
                     let
                         updatedRecordsInFunction =
                             Dict.update recordName
-                                (\set ->
-                                    case set of
-                                        Just ( t, oldSet ) ->
-                                            Just ( t, Set.insert field oldSet )
-
-                                        Nothing ->
-                                            Nothing
+                                (\recordData ->
+                                    Maybe.map
+                                        (\tuple ->
+                                            Tuple.mapSecond (\set -> Set.insert field set) tuple
+                                        )
+                                        recordData
                                 )
                                 recordsInFunction
-
-                        updatedUsedRecords =
-                            Dict.update functionName (\_ -> Just updatedRecordsInFunction) context.usedRecords
                     in
-                    { context | usedRecords = updatedUsedRecords }
+                    Dict.update functionName (\_ -> Just updatedRecordsInFunction) usedRecords
 
                 _ ->
-                    context
+                    usedRecords
 
         Nothing ->
-            context
+            usedRecords
 
 
 finalEvaluation : Context -> List (Error {})
 finalEvaluation context =
-    -- Dict String (Dict String (Set String))
-    -- Dict funcNm (Dict record (Set usedFld))
-    Dict.foldl (functionToErrorList context) [] context.usedRecords
+    Dict.foldl (functionToErrorList context.recordAliases context.functionRanges) [] context.usedRecords
 
 
-functionToErrorList : Context -> String -> Dict String ( String, Set String ) -> List (Error {}) -> List (Error {})
-functionToErrorList context key value list =
-    case Dict.get key context.functionNodes of
-        Just node ->
-            List.filterMap (recordToError node context.recordAliases) (Dict.toList value) ++ list
+functionToErrorList : Dict String Int -> Dict String Range -> String -> Dict String ( String, Set String ) -> List (Error {}) -> List (Error {})
+functionToErrorList recordAliases functionRanges functionName recordsInFunction errorList =
+    case Dict.get functionName functionRanges of
+        Just range ->
+            List.filterMap (recordToError range recordAliases) (Dict.toList recordsInFunction) ++ errorList
 
         Nothing ->
-            list
+            errorList
 
 
-recordToError : Node Declaration -> Dict String Int -> ( String, ( String, Set string ) ) -> Maybe (Error {})
-recordToError node recordFieldsCount recordFieldUsed =
+recordToError : Range -> Dict String Int -> ( a, ( String, Set a ) ) -> Maybe (Error {})
+recordToError range recordFieldsCount recordFieldUsed =
     let
-        recordName =
+        recordType =
             Tuple.first (Tuple.second recordFieldUsed)
 
         used =
             Set.size (Tuple.second (Tuple.second recordFieldUsed))
     in
-    case Dict.get recordName recordFieldsCount of
-        Just fieldCount ->
-            if fieldCount == used then
-                Nothing
+    Dict.get recordType recordFieldsCount
+        |> Maybe.andThen
+            (\fieldCount ->
+                if fieldCount == used then
+                    Nothing
 
-            else
-                Just (accessError node recordName used fieldCount)
-
-        Nothing ->
-            Nothing
+                else
+                    Just (accessError range recordType used fieldCount)
+            )
 
 
 destructedError : Node a -> String -> Int -> Int -> Error {}
@@ -288,32 +282,12 @@ destructedError node record used all =
         (Node.range node)
 
 
-accessError : Node a -> String -> Int -> Int -> Error {}
-accessError node record used all =
+accessError : Range -> String -> Int -> Int -> Error {}
+accessError range record used all =
     Rule.error
         { message = "Non-exhaustive Record Access detected"
         , details =
             [ "You only used " ++ String.fromInt used ++ " of " ++ String.fromInt all ++ " fields from the record: " ++ record
             ]
         }
-        (Node.range node)
-
-
-debugMsg : Int -> Error scope
-debugMsg str =
-    Rule.globalError
-        { message = "Debug"
-        , details =
-            [ String.fromInt str
-            ]
-        }
-
-
-exprToString : Node Expression -> String
-exprToString node =
-    case Node.value node of
-        Expression.FunctionOrValue _ str ->
-            str
-
-        _ ->
-            "falscher case"
+        range
