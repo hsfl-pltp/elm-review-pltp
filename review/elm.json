@@ -19,6 +19,7 @@
             "jfmengels/elm-review-simplify": "2.0.8",
             "jfmengels/elm-review-the-elm-architecture": "1.0.3",
             "jfmengels/elm-review-unused": "1.1.20",
+            "pzp1997/assoc-list": "1.0.0",
             "sparksp/elm-review-camelcase": "1.1.0",
             "stil4m/elm-syntax": "7.2.9"
         },
