@@ -1,6 +1,6 @@
 module NoMinimalRecordAccess exposing (rule)
 
-import Dict exposing (Dict)
+import AssocList as Dict exposing (Dict)
 import Elm.Syntax.Declaration as Declaration exposing (Declaration)
 import Elm.Syntax.Expression as Expression exposing (Expression)
 import Elm.Syntax.Node as Node exposing (Node)
@@ -11,11 +11,22 @@ import Review.Rule as Rule exposing (Error, Rule)
 import Set exposing (Set)
 
 
+type RecordAlias
+    = RecordAlias String
+
+
+type FunctionScope
+    = FunctionScope Range
+
+
+type VarName
+    = VarName String
+
+
 type alias Context =
-    { recordAliases : Dict String Int
-    , usedRecords : Dict String (Dict String ( String, Set String ))
-    , functionRanges : Dict String Range
-    , currentFunction : Maybe String
+    { recordAliases : Dict RecordAlias Int
+    , usedRecords : Dict FunctionScope (Dict VarName ( RecordAlias, Set String ))
+    , currentFunction : Maybe FunctionScope
     }
 
 
@@ -23,7 +34,6 @@ initialContext : Context
 initialContext =
     { recordAliases = Dict.empty
     , usedRecords = Dict.empty
-    , functionRanges = Dict.empty
     , currentFunction = Nothing
     }
 
@@ -50,13 +60,13 @@ declarationListVisitor declarations context =
     )
 
 
-customRecords : Node Declaration -> Maybe ( String, Int )
+customRecords : Node Declaration -> Maybe ( RecordAlias, Int )
 customRecords node =
     case Node.value node of
         Declaration.AliasDeclaration { name, typeAnnotation } ->
             case Node.value typeAnnotation of
                 TypeAnnotation.Record recDef ->
-                    Just ( Node.value name, List.length recDef )
+                    Just ( RecordAlias (Node.value name), List.length recDef )
 
                 _ ->
                     Nothing
@@ -72,12 +82,6 @@ declarationVisitor node context =
             case signature of
                 Just sig ->
                     let
-                        functionName =
-                            declaration
-                                |> Node.value
-                                |> .name
-                                |> Node.value
-
                         typeAnnotation =
                             sig
                                 |> Node.value
@@ -99,11 +103,9 @@ declarationVisitor node context =
                     ( destructedErrors
                     , { context
                         | usedRecords =
-                            Dict.insert functionName dictForRecords context.usedRecords
-                        , functionRanges =
-                            Dict.insert functionName (Node.range node) context.functionRanges
+                            Dict.insert (FunctionScope (Node.range node)) dictForRecords context.usedRecords
                         , currentFunction =
-                            Just functionName
+                            Just (FunctionScope (Node.range node))
                       }
                     )
 
@@ -114,7 +116,7 @@ declarationVisitor node context =
             ( [], { context | currentFunction = Nothing } )
 
 
-recordParameters : Dict String Int -> Node TypeAnnotation -> List (Node Pattern) -> ( List ( String, String ), List (Error {}) )
+recordParameters : Dict RecordAlias Int -> Node TypeAnnotation -> List (Node Pattern) -> ( List ( VarName, RecordAlias ), List (Error {}) )
 recordParameters recordAliases node list =
     let
         typesPatterns =
@@ -125,7 +127,7 @@ recordParameters recordAliases node list =
     )
 
 
-typesWithPatterns : Node TypeAnnotation -> List (Node Pattern) -> List ( String, Node Pattern )
+typesWithPatterns : Node TypeAnnotation -> List (Node Pattern) -> List ( RecordAlias, Node Pattern )
 typesWithPatterns typeAnnotation list =
     case Node.value typeAnnotation of
         TypeAnnotation.FunctionTypeAnnotation head tail ->
@@ -142,18 +144,18 @@ typesWithPatterns typeAnnotation list =
                     []
 
                 pattern :: _ ->
-                    [ ( Tuple.second (Node.value typed), pattern ) ]
+                    [ ( RecordAlias (Tuple.second (Node.value typed)), pattern ) ]
 
         _ ->
             []
 
 
-undestructedRecordType : Dict String Int -> ( String, Node Pattern ) -> Maybe ( String, String )
-undestructedRecordType recordAliases ( typeName, node ) =
-    if Dict.member typeName recordAliases then
+undestructedRecordType : Dict RecordAlias Int -> ( RecordAlias, Node Pattern ) -> Maybe ( VarName, RecordAlias )
+undestructedRecordType moduleRecordAliases ( recordAlias, node ) =
+    if Dict.member recordAlias moduleRecordAliases then
         case Node.value node of
             Pattern.VarPattern name ->
-                Just ( name, typeName )
+                Just ( VarName name, recordAlias )
 
             _ ->
                 Nothing
@@ -162,17 +164,21 @@ undestructedRecordType recordAliases ( typeName, node ) =
         Nothing
 
 
-destructedRecordPattern : Dict String Int -> ( String, Node Pattern ) -> Maybe (Error {})
-destructedRecordPattern recordAliases ( name, node ) =
+destructedRecordPattern : Dict RecordAlias Int -> ( RecordAlias, Node Pattern ) -> Maybe (Error {})
+destructedRecordPattern moduleRecordAliases ( recordAlias, node ) =
     case Node.value node of
         Pattern.RecordPattern list ->
-            case Dict.get name recordAliases of
+            case Dict.get recordAlias moduleRecordAliases of
                 Just numberOfFields ->
                     if numberOfFields == List.length list then
                         Nothing
 
                     else
-                        Just (destructedError node name (List.length list) numberOfFields)
+                        let
+                            (RecordAlias record) =
+                                recordAlias
+                        in
+                        Just (destructedError node record (List.length list) numberOfFields)
 
                 Nothing ->
                     Nothing
@@ -184,17 +190,17 @@ destructedRecordPattern recordAliases ( name, node ) =
 expressionVisitor : Node Expression -> Context -> ( List (Error {}), Context )
 expressionVisitor node context =
     case context.currentFunction of
-        Just functionName ->
+        Just functionScope ->
             case Node.value node of
                 Expression.RecordAccess recordNode fieldNode ->
-                    ( [], { context | usedRecords = updateUsedRecords context.usedRecords functionName (Node.value recordNode) (Node.value fieldNode) } )
+                    ( [], { context | usedRecords = updateUsedRecords context.usedRecords functionScope (Node.value recordNode) (Node.value fieldNode) } )
 
                 Expression.Application (fun :: arguments) ->
                     case Node.value fun of
                         Expression.RecordAccessFunction field ->
                             case List.head arguments of
                                 Just recordNode ->
-                                    ( [], { context | usedRecords = updateUsedRecords context.usedRecords functionName (Node.value recordNode) field } )
+                                    ( [], { context | usedRecords = updateUsedRecords context.usedRecords functionScope (Node.value recordNode) field } )
 
                                 _ ->
                                     ( [], context )
@@ -209,15 +215,15 @@ expressionVisitor node context =
             ( [], context )
 
 
-updateUsedRecords : Dict String (Dict String ( String, Set String )) -> String -> Expression -> String -> Dict String (Dict String ( String, Set String ))
-updateUsedRecords usedRecords functionName record field =
-    case Dict.get functionName usedRecords of
+updateUsedRecords : Dict FunctionScope (Dict VarName ( RecordAlias, Set String )) -> FunctionScope -> Expression -> String -> Dict FunctionScope (Dict VarName ( RecordAlias, Set String ))
+updateUsedRecords usedRecords functionScope record field =
+    case Dict.get functionScope usedRecords of
         Just recordsInFunction ->
             case record of
                 Expression.FunctionOrValue _ recordName ->
                     let
                         updatedRecordsInFunction =
-                            Dict.update recordName
+                            Dict.update (VarName recordName)
                                 (\recordData ->
                                     Maybe.map
                                         (\tuple ->
@@ -227,7 +233,7 @@ updateUsedRecords usedRecords functionName record field =
                                 )
                                 recordsInFunction
                     in
-                    Dict.update functionName (\_ -> Just updatedRecordsInFunction) usedRecords
+                    Dict.update functionScope (\_ -> Just updatedRecordsInFunction) usedRecords
 
                 _ ->
                     usedRecords
@@ -238,21 +244,16 @@ updateUsedRecords usedRecords functionName record field =
 
 finalEvaluation : Context -> List (Error {})
 finalEvaluation context =
-    Dict.foldl (functionToErrorList context.recordAliases context.functionRanges) [] context.usedRecords
+    Dict.foldl (functionToErrorList context.recordAliases) [] context.usedRecords
 
 
-functionToErrorList : Dict String Int -> Dict String Range -> String -> Dict String ( String, Set String ) -> List (Error {}) -> List (Error {})
-functionToErrorList recordAliases functionRanges functionName recordsInFunction errorList =
-    case Dict.get functionName functionRanges of
-        Just range ->
-            List.filterMap (recordToError range recordAliases) (Dict.toList recordsInFunction) ++ errorList
-
-        Nothing ->
-            errorList
+functionToErrorList : Dict RecordAlias Int -> FunctionScope -> Dict VarName ( RecordAlias, Set String ) -> List (Error {}) -> List (Error {})
+functionToErrorList recordAliases functionScope recordsInFunction errorList =
+    List.filterMap (recordToError functionScope recordAliases) (Dict.toList recordsInFunction) ++ errorList
 
 
-recordToError : Range -> Dict String Int -> ( a, ( String, Set a ) ) -> Maybe (Error {})
-recordToError range recordFieldsCount recordFieldUsed =
+recordToError : FunctionScope -> Dict RecordAlias Int -> ( a, ( RecordAlias, Set b ) ) -> Maybe (Error {})
+recordToError functionScope recordFieldsCount recordFieldUsed =
     let
         recordType =
             Tuple.first (Tuple.second recordFieldUsed)
@@ -267,7 +268,14 @@ recordToError range recordFieldsCount recordFieldUsed =
                     Nothing
 
                 else
-                    Just (accessError range recordType used fieldCount)
+                    let
+                        (RecordAlias record) =
+                            recordType
+
+                        (FunctionScope range) =
+                            functionScope
+                    in
+                    Just (accessError range record used fieldCount)
             )
 
 
