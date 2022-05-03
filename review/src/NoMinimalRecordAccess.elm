@@ -1,152 +1,290 @@
-module NoMinimalRecordAccess exposing
-    ( rule
-    , Config
-    )
+module NoMinimalRecordAccess exposing (rule)
 
-{-| Forbids the use of a record, when only a few components from the record is used
-
-@docs rule
-
--}
-
-import Elm.Syntax.Declaration as Declaration exposing (Declaration(..))
-import Elm.Syntax.Expression as Expression exposing (Expression, FunctionImplementation)
-import Elm.Syntax.Node as Node exposing (Node(..))
+import AssocList as Dict exposing (Dict)
+import Elm.Syntax.Declaration as Declaration exposing (Declaration)
+import Elm.Syntax.Expression as Expression exposing (Expression)
+import Elm.Syntax.Node as Node exposing (Node)
 import Elm.Syntax.Pattern as Pattern exposing (Pattern)
-import List.Extra
+import Elm.Syntax.Range exposing (Range)
+import Elm.Syntax.TypeAnnotation as TypeAnnotation exposing (TypeAnnotation(..))
 import Review.Rule as Rule exposing (Error, Rule)
 
 
-{-| Reports the use of records , where only a few components are used.
-
-    config =
-        [ NoMinimalRecordDestructing.rule 1
-        ]
+type RecordAlias
+    = RecordAlias String
 
 
-## Fail
-
-    type alias Person = {age : Int, name : String}
-
-    viewAge { age } =
-        ...
-
-    viewAge person =
+type FunctionScope
+    = FunctionScope Range
 
 
-## Success
+type VarName
+    = VarName String
 
-    viewAge age =
-        ...
 
--}
-type alias Config =
-    { threshold : Int
-    , ignoreFunctions : List String
+type RecordField
+    = RecordField String
+
+
+type alias Context =
+    { recordAliases : Dict RecordAlias Int
+    , usedRecords : Dict FunctionScope (Dict VarName ( RecordAlias, Dict RecordField () ))
+    , currentFunction : Maybe FunctionScope
     }
 
 
-rule : Config -> Rule
-rule config =
-    Rule.newModuleRuleSchema "NoMinimalRecordAccess" ()
-        |> Rule.withSimpleDeclarationVisitor (declarationVisitor config)
+initialContext : Context
+initialContext =
+    { recordAliases = Dict.empty
+    , usedRecords = Dict.empty
+    , currentFunction = Nothing
+    }
+
+
+rule : Rule
+rule =
+    Rule.newModuleRuleSchema "NoMinimalRecordAccess" initialContext
+        |> Rule.withDeclarationListVisitor declarationListVisitor
+        |> Rule.withDeclarationEnterVisitor declarationVisitor
+        |> Rule.withExpressionEnterVisitor expressionVisitor
+        |> Rule.withFinalModuleEvaluation finalEvaluation
         |> Rule.fromModuleRuleSchema
 
 
-declarationVisitor : Config -> Node Declaration -> List (Error {})
-declarationVisitor config node =
+declarationListVisitor : List (Node Declaration) -> Context -> ( List (Error {}), Context )
+declarationListVisitor declarations context =
+    ( []
+    , { context
+        | recordAliases =
+            declarations
+                |> List.filterMap customRecords
+                |> Dict.fromList
+      }
+    )
+
+
+customRecords : Node Declaration -> Maybe ( RecordAlias, Int )
+customRecords node =
     case Node.value node of
-        Declaration.FunctionDeclaration { declaration } ->
-            errorsForDeclaration config (Node.value declaration)
+        Declaration.AliasDeclaration { name, typeAnnotation } ->
+            case Node.value typeAnnotation of
+                TypeAnnotation.Record recDef ->
+                    Just ( RecordAlias (Node.value name), List.length recDef )
+
+                _ ->
+                    Nothing
+
+        _ ->
+            Nothing
+
+
+declarationVisitor : Node Declaration -> Context -> ( List (Error {}), Context )
+declarationVisitor node context =
+    case Node.value node of
+        Declaration.FunctionDeclaration { declaration, signature } ->
+            case signature of
+                Just sig ->
+                    let
+                        ( funcTypes, destructedErrors ) =
+                            recordParameters context.recordAliases (.typeAnnotation (Node.value sig)) (.arguments (Node.value declaration))
+
+                        dictForRecords =
+                            funcTypes
+                                |> List.map
+                                    (\var ->
+                                        Tuple.mapSecond
+                                            (\recType ->
+                                                ( recType, Dict.empty )
+                                            )
+                                            var
+                                    )
+                                |> Dict.fromList
+                    in
+                    ( destructedErrors
+                    , { context
+                        | usedRecords =
+                            Dict.insert (FunctionScope (Node.range node)) dictForRecords context.usedRecords
+                        , currentFunction =
+                            Just (FunctionScope (Node.range node))
+                      }
+                    )
+
+                Nothing ->
+                    ( [], { context | currentFunction = Nothing } )
+
+        _ ->
+            ( [], { context | currentFunction = Nothing } )
+
+
+recordParameters : Dict RecordAlias Int -> Node TypeAnnotation -> List (Node Pattern) -> ( List ( VarName, RecordAlias ), List (Error {}) )
+recordParameters recordAliases node list =
+    let
+        typesPatterns =
+            typesWithPatterns node list
+    in
+    ( List.filterMap (undestructedRecordType recordAliases) typesPatterns
+    , List.filterMap (destructedRecordPattern recordAliases) typesPatterns
+    )
+
+
+typesWithPatterns : Node TypeAnnotation -> List (Node Pattern) -> List ( RecordAlias, Node Pattern )
+typesWithPatterns typeAnnotation list =
+    case Node.value typeAnnotation of
+        TypeAnnotation.FunctionTypeAnnotation head tail ->
+            case Node.value tail of
+                TypeAnnotation.FunctionTypeAnnotation _ _ ->
+                    typesWithPatterns head (List.take 1 list) ++ typesWithPatterns tail (List.drop 1 list)
+
+                _ ->
+                    typesWithPatterns head (List.take 1 list)
+
+        TypeAnnotation.Typed typed _ ->
+            case list of
+                [] ->
+                    []
+
+                pattern :: _ ->
+                    [ ( RecordAlias (Tuple.second (Node.value typed)), pattern ) ]
 
         _ ->
             []
 
 
-errorsForDeclaration : Config -> FunctionImplementation -> List (Error {})
-errorsForDeclaration config { arguments, expression, name } =
-    if List.member (Node.value name) config.ignoreFunctions then
-        []
+undestructedRecordType : Dict RecordAlias Int -> ( RecordAlias, Node Pattern ) -> Maybe ( VarName, RecordAlias )
+undestructedRecordType moduleRecordAliases ( recordAlias, node ) =
+    if Dict.member recordAlias moduleRecordAliases then
+        case Node.value node of
+            Pattern.VarPattern name ->
+                Just ( VarName name, recordAlias )
+
+            _ ->
+                Nothing
 
     else
-        errorsForArguments config.threshold arguments
-            ++ errorsForExpression config.threshold expression
+        Nothing
 
 
-errorsForExpression : Int -> Node Expression -> List (Error {})
-errorsForExpression threshold node =
-    if List.length (used node) >= threshold then
-        [ ruleError threshold node ]
-
-    else
-        []
-
-
-used : Node Expression -> List String
-used node =
-    node
-        |> accessed
-        |> List.Extra.unique
-
-
-accessed : Node Expression -> List String
-accessed node =
+destructedRecordPattern : Dict RecordAlias Int -> ( RecordAlias, Node Pattern ) -> Maybe (Error {})
+destructedRecordPattern moduleRecordAliases ( recordAlias, node ) =
     case Node.value node of
-        Expression.RecordAccess expr (Node _ name) ->
-            [ toRecordString (Node.value expr) name ]
+        Pattern.RecordPattern list ->
+            case Dict.get recordAlias moduleRecordAliases of
+                Just numberOfFields ->
+                    if numberOfFields == List.length list then
+                        Nothing
 
-        Expression.Application expressions ->
-            List.concatMap used expressions
+                    else
+                        Just (destructedError node recordAlias (List.length list) numberOfFields)
 
-        Expression.OperatorApplication _ _ left right ->
-            List.concatMap used [ left, right ]
-
-        Expression.IfBlock expr left right ->
-            List.concatMap used [ expr, left, right ]
-
-        Expression.CaseExpression { expression, cases } ->
-            List.concatMap used (expression :: List.map Tuple.second cases)
-
-        Expression.ListExpr expressions ->
-            List.concatMap used expressions
+                Nothing ->
+                    Nothing
 
         _ ->
-            []
+            Nothing
 
 
-toRecordString : Expression -> String -> String
-toRecordString expression name =
-    case expression of
-        Expression.FunctionOrValue [] record ->
-            record ++ "." ++ name
+expressionVisitor : Node Expression -> Context -> ( List (Error {}), Context )
+expressionVisitor node context =
+    case context.currentFunction of
+        Just functionScope ->
+            case Node.value node of
+                Expression.RecordAccess recordNode fieldNode ->
+                    ( [], { context | usedRecords = updateUsedRecords context.usedRecords functionScope (Node.value recordNode) (Node.value fieldNode) } )
 
-        _ ->
-            name
+                Expression.Application (fun :: arguments) ->
+                    case Node.value fun of
+                        Expression.RecordAccessFunction field ->
+                            case List.head arguments of
+                                Just recordNode ->
+                                    ( [], { context | usedRecords = updateUsedRecords context.usedRecords functionScope (Node.value recordNode) field } )
+
+                                _ ->
+                                    ( [], context )
+
+                        _ ->
+                            ( [], context )
+
+                _ ->
+                    ( [], context )
+
+        Nothing ->
+            ( [], context )
 
 
-errorsForArguments : Int -> List (Node Pattern) -> List (Error {})
-errorsForArguments threshold patterns =
-    patterns
-        |> List.filter (invalidPattern threshold)
-        |> List.map (ruleError threshold)
+updateUsedRecords : Dict FunctionScope (Dict VarName ( RecordAlias, Dict RecordField () )) -> FunctionScope -> Expression -> String -> Dict FunctionScope (Dict VarName ( RecordAlias, Dict RecordField () ))
+updateUsedRecords usedRecords functionScope record field =
+    case Dict.get functionScope usedRecords of
+        Just recordsInFunction ->
+            case record of
+                Expression.FunctionOrValue _ recordName ->
+                    let
+                        updatedRecordsInFunction =
+                            Dict.update (VarName recordName)
+                                (\recordData ->
+                                    Maybe.map
+                                        (\tuple ->
+                                            Tuple.mapSecond (\dict -> Dict.insert (RecordField field) () dict) tuple
+                                        )
+                                        recordData
+                                )
+                                recordsInFunction
+                    in
+                    Dict.update functionScope (\_ -> Just updatedRecordsInFunction) usedRecords
+
+                _ ->
+                    usedRecords
+
+        Nothing ->
+            usedRecords
 
 
-invalidPattern : Int -> Node Pattern -> Bool
-invalidPattern threshold node =
-    case Node.value node of
-        Pattern.RecordPattern components ->
-            List.length components <= threshold
-
-        _ ->
-            False
+finalEvaluation : Context -> List (Error {})
+finalEvaluation context =
+    Dict.foldl (functionToErrorList context.recordAliases) [] context.usedRecords
 
 
-ruleError : Int -> Node a -> Error {}
-ruleError threshold node =
+functionToErrorList : Dict RecordAlias Int -> FunctionScope -> Dict VarName ( RecordAlias, Dict RecordField () ) -> List (Error {}) -> List (Error {})
+functionToErrorList recordAliases functionScope recordsInFunction errorList =
+    List.filterMap (recordToError functionScope recordAliases) (Dict.toList recordsInFunction) ++ errorList
+
+
+recordToError : FunctionScope -> Dict RecordAlias Int -> ( a, ( RecordAlias, Dict b () ) ) -> Maybe (Error {})
+recordToError functionScope recordFieldsCount recordFieldUsed =
+    let
+        recordAlias =
+            Tuple.first (Tuple.second recordFieldUsed)
+
+        used =
+            Dict.size (Tuple.second (Tuple.second recordFieldUsed))
+    in
+    Dict.get recordAlias recordFieldsCount
+        |> Maybe.andThen
+            (\fieldCount ->
+                if fieldCount == used then
+                    Nothing
+
+                else
+                    Just (accessError functionScope recordAlias used fieldCount)
+            )
+
+
+destructedError : Node a -> RecordAlias -> Int -> Int -> Error {}
+destructedError node (RecordAlias record) used all =
     Rule.error
-        { message = "Unnecessary complex record argument detected."
+        { message = "Non-exhaustive Record Destructing detected"
         , details =
-            [ "If a function receives a record as an argument and the function uses " ++ String.fromInt threshold ++ " or less fields from a record, then you should pass the fields as individual arguments to the function."
+            [ "You only used " ++ String.fromInt used ++ " of " ++ String.fromInt all ++ " fields from the record: " ++ record
             ]
         }
         (Node.range node)
+
+
+accessError : FunctionScope -> RecordAlias -> Int -> Int -> Error {}
+accessError (FunctionScope range) (RecordAlias record) used all =
+    Rule.error
+        { message = "Non-exhaustive Record Access detected"
+        , details =
+            [ "You only used " ++ String.fromInt used ++ " of " ++ String.fromInt all ++ " fields from the record: " ++ record
+            ]
+        }
+        range

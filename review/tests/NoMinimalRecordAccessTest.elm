@@ -1,11 +1,11 @@
 module NoMinimalRecordAccessTest exposing (all)
 
-import NoMinimalRecordAccess exposing (rule)
+import NoMinimalRecordAccessOld exposing (rule)
 import Review.Test exposing (ExpectedError)
 import Test exposing (Test, describe, test)
 
 
-ruleConfig : NoMinimalRecordAccess.Config
+ruleConfig : NoMinimalRecordAccessOld.Config
 ruleConfig =
     { threshold = 2
     , ignoreFunctions = []

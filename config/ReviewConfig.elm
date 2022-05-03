@@ -66,9 +66,6 @@ config =
         }
     , NoImportingEverything.rule []
     , NoMinimalRecordAccess.rule
-        { threshold = 3
-        , ignoreFunctions = [ "subscriptions" ]
-        }
     , NoMinimalUnderscorePattern.rule 3
     , NoMissingTypeAnnotation.rule
     , NoNegationOfBooleanOperator.rule
