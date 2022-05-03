@@ -7,6 +7,7 @@ import Elm.Syntax.Node as Node exposing (Node)
 import Elm.Syntax.Pattern as Pattern exposing (Pattern)
 import Elm.Syntax.Range exposing (Range)
 import Elm.Syntax.TypeAnnotation as TypeAnnotation exposing (TypeAnnotation(..))
+import Ext.UniqueList as Set exposing (Set)
 import Review.Rule as Rule exposing (Error, Rule)
 
 
@@ -28,7 +29,7 @@ type RecordField
 
 type alias Context =
     { recordAliases : Dict RecordAlias Int
-    , usedRecords : Dict FunctionScope (Dict VarName ( RecordAlias, Dict RecordField () ))
+    , usedRecords : Dict FunctionScope (Dict VarName ( RecordAlias, Set RecordField ))
     , currentFunction : Maybe FunctionScope
     }
 
@@ -94,7 +95,7 @@ declarationVisitor node context =
                                     (\var ->
                                         Tuple.mapSecond
                                             (\recType ->
-                                                ( recType, Dict.empty )
+                                                ( recType, Set.empty )
                                             )
                                             var
                                     )
@@ -211,7 +212,7 @@ expressionVisitor node context =
             ( [], context )
 
 
-updateUsedRecords : Dict FunctionScope (Dict VarName ( RecordAlias, Dict RecordField () )) -> FunctionScope -> Expression -> String -> Dict FunctionScope (Dict VarName ( RecordAlias, Dict RecordField () ))
+updateUsedRecords : Dict FunctionScope (Dict VarName ( RecordAlias, Set RecordField )) -> FunctionScope -> Expression -> String -> Dict FunctionScope (Dict VarName ( RecordAlias, Set RecordField ))
 updateUsedRecords usedRecords functionScope record field =
     case Dict.get functionScope usedRecords of
         Just recordsInFunction ->
@@ -223,7 +224,7 @@ updateUsedRecords usedRecords functionScope record field =
                                 (\recordData ->
                                     Maybe.map
                                         (\tuple ->
-                                            Tuple.mapSecond (\dict -> Dict.insert (RecordField field) () dict) tuple
+                                            Tuple.mapSecond (\set -> Set.insert (RecordField field) set) tuple
                                         )
                                         recordData
                                 )
@@ -243,19 +244,19 @@ finalEvaluation context =
     Dict.foldl (functionToErrorList context.recordAliases) [] context.usedRecords
 
 
-functionToErrorList : Dict RecordAlias Int -> FunctionScope -> Dict VarName ( RecordAlias, Dict RecordField () ) -> List (Error {}) -> List (Error {})
+functionToErrorList : Dict RecordAlias Int -> FunctionScope -> Dict VarName ( RecordAlias, Set RecordField ) -> List (Error {}) -> List (Error {})
 functionToErrorList recordAliases functionScope recordsInFunction errorList =
     List.filterMap (recordToError functionScope recordAliases) (Dict.toList recordsInFunction) ++ errorList
 
 
-recordToError : FunctionScope -> Dict RecordAlias Int -> ( a, ( RecordAlias, Dict b () ) ) -> Maybe (Error {})
+recordToError : FunctionScope -> Dict RecordAlias Int -> ( a, ( RecordAlias, Set b ) ) -> Maybe (Error {})
 recordToError functionScope recordFieldsCount recordFieldUsed =
     let
         recordAlias =
             Tuple.first (Tuple.second recordFieldUsed)
 
         used =
-            Dict.size (Tuple.second (Tuple.second recordFieldUsed))
+            Set.size (Tuple.second (Tuple.second recordFieldUsed))
     in
     Dict.get recordAlias recordFieldsCount
         |> Maybe.andThen
