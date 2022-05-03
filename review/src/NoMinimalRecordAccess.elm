@@ -269,11 +269,7 @@ recordToError functionScope recordFieldsCount recordFieldUsed =
 
 
 destructedError : Node a -> RecordAlias -> Int -> Int -> Error {}
-destructedError node recordAlias used all =
-    let
-        (RecordAlias record) =
-            recordAlias
-    in
+destructedError node (RecordAlias record) used all =
     Rule.error
         { message = "Non-exhaustive Record Destructing detected"
         , details =
@@ -284,14 +280,7 @@ destructedError node recordAlias used all =
 
 
 accessError : FunctionScope -> RecordAlias -> Int -> Int -> Error {}
-accessError functionScope recordAlias used all =
-    let
-        (RecordAlias record) =
-            recordAlias
-
-        (FunctionScope range) =
-            functionScope
-    in
+accessError (FunctionScope range) (RecordAlias record) used all =
     Rule.error
         { message = "Non-exhaustive Record Access detected"
         , details =
