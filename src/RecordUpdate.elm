@@ -46,3 +46,13 @@ destructedDifferent { x, y, z } =
 diffRecordsDifferent : Vector2 -> Vector3 -> Vector3
 diffRecordsDifferent v2 v3 =
     { x = v2.x, y = v2.y, z = v3.x + v3.y + v3.z }
+
+
+diffDestructDifferent : Vector2 -> Vector3 -> Vector3
+diffDestructDifferent { x, y } v3 =
+    { x = x, y = y, z = v3.x + v3.y + v3.z }
+
+
+twoDifferent : Vector3 -> Vector3 -> Vector3
+twoDifferent v1 v2 =
+    { x = v1.x + v2.x, y = v1.y - v2.y + v2.z, z = v1.z }

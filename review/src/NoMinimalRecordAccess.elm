@@ -10,8 +10,8 @@ import Elm.Syntax.TypeAnnotation as TypeAnnotation exposing (TypeAnnotation(..))
 import Review.Rule as Rule exposing (Error, Rule)
 
 
-type RecordAlias
-    = RecordAlias String
+type TypeName
+    = TypeName String
 
 
 type FunctionScope
@@ -27,8 +27,8 @@ type RecordField
 
 
 type alias Context =
-    { recordAliases : Dict RecordAlias Int
-    , usedRecords : Dict FunctionScope (Dict VarName ( RecordAlias, Dict RecordField () ))
+    { recordAliases : Dict TypeName Int
+    , usedRecords : Dict FunctionScope (Dict VarName ( TypeName, Dict RecordField () ))
     , currentFunction : Maybe FunctionScope
     }
 
@@ -63,13 +63,13 @@ declarationListVisitor declarations context =
     )
 
 
-customRecords : Node Declaration -> Maybe ( RecordAlias, Int )
+customRecords : Node Declaration -> Maybe ( TypeName, Int )
 customRecords node =
     case Node.value node of
         Declaration.AliasDeclaration { name, typeAnnotation } ->
             case Node.value typeAnnotation of
                 TypeAnnotation.Record recDef ->
-                    Just ( RecordAlias (Node.value name), List.length recDef )
+                    Just ( TypeName (Node.value name), List.length recDef )
 
                 _ ->
                     Nothing
@@ -116,7 +116,7 @@ declarationVisitor node context =
             ( [], { context | currentFunction = Nothing } )
 
 
-recordParameters : Dict RecordAlias Int -> Node TypeAnnotation -> List (Node Pattern) -> ( List ( VarName, RecordAlias ), List (Error {}) )
+recordParameters : Dict TypeName Int -> Node TypeAnnotation -> List (Node Pattern) -> ( List ( VarName, TypeName ), List (Error {}) )
 recordParameters recordAliases node list =
     let
         typesPatterns =
@@ -127,7 +127,7 @@ recordParameters recordAliases node list =
     )
 
 
-typesWithPatterns : Node TypeAnnotation -> List (Node Pattern) -> List ( RecordAlias, Node Pattern )
+typesWithPatterns : Node TypeAnnotation -> List (Node Pattern) -> List ( TypeName, Node Pattern )
 typesWithPatterns typeAnnotation list =
     case Node.value typeAnnotation of
         TypeAnnotation.FunctionTypeAnnotation head tail ->
@@ -144,18 +144,18 @@ typesWithPatterns typeAnnotation list =
                     []
 
                 pattern :: _ ->
-                    [ ( RecordAlias (Tuple.second (Node.value typed)), pattern ) ]
+                    [ ( TypeName (Tuple.second (Node.value typed)), pattern ) ]
 
         _ ->
             []
 
 
-undestructedRecordType : Dict RecordAlias Int -> ( RecordAlias, Node Pattern ) -> Maybe ( VarName, RecordAlias )
-undestructedRecordType moduleRecordAliases ( recordAlias, node ) =
-    if Dict.member recordAlias moduleRecordAliases then
+undestructedRecordType : Dict TypeName Int -> ( TypeName, Node Pattern ) -> Maybe ( VarName, TypeName )
+undestructedRecordType moduleTypeNames ( typeName, node ) =
+    if Dict.member typeName moduleTypeNames then
         case Node.value node of
             Pattern.VarPattern name ->
-                Just ( VarName name, recordAlias )
+                Just ( VarName name, typeName )
 
             _ ->
                 Nothing
@@ -164,17 +164,17 @@ undestructedRecordType moduleRecordAliases ( recordAlias, node ) =
         Nothing
 
 
-destructedRecordPattern : Dict RecordAlias Int -> ( RecordAlias, Node Pattern ) -> Maybe (Error {})
-destructedRecordPattern moduleRecordAliases ( recordAlias, node ) =
+destructedRecordPattern : Dict TypeName Int -> ( TypeName, Node Pattern ) -> Maybe (Error {})
+destructedRecordPattern moduleTypeNames ( typeName, node ) =
     case Node.value node of
         Pattern.RecordPattern list ->
-            case Dict.get recordAlias moduleRecordAliases of
+            case Dict.get typeName moduleTypeNames of
                 Just numberOfFields ->
                     if numberOfFields == List.length list then
                         Nothing
 
                     else
-                        Just (destructedError node recordAlias (List.length list) numberOfFields)
+                        Just (destructedError node typeName (List.length list) numberOfFields)
 
                 Nothing ->
                     Nothing
@@ -211,7 +211,7 @@ expressionVisitor node context =
             ( [], context )
 
 
-updateUsedRecords : Dict FunctionScope (Dict VarName ( RecordAlias, Dict RecordField () )) -> FunctionScope -> Expression -> String -> Dict FunctionScope (Dict VarName ( RecordAlias, Dict RecordField () ))
+updateUsedRecords : Dict FunctionScope (Dict VarName ( TypeName, Dict RecordField () )) -> FunctionScope -> Expression -> String -> Dict FunctionScope (Dict VarName ( TypeName, Dict RecordField () ))
 updateUsedRecords usedRecords functionScope record field =
     case Dict.get functionScope usedRecords of
         Just recordsInFunction ->
@@ -243,12 +243,12 @@ finalEvaluation context =
     Dict.foldl (functionToErrorList context.recordAliases) [] context.usedRecords
 
 
-functionToErrorList : Dict RecordAlias Int -> FunctionScope -> Dict VarName ( RecordAlias, Dict RecordField () ) -> List (Error {}) -> List (Error {})
+functionToErrorList : Dict TypeName Int -> FunctionScope -> Dict VarName ( TypeName, Dict RecordField () ) -> List (Error {}) -> List (Error {})
 functionToErrorList recordAliases functionScope recordsInFunction errorList =
     List.filterMap (recordToError functionScope recordAliases) (Dict.toList recordsInFunction) ++ errorList
 
 
-recordToError : FunctionScope -> Dict RecordAlias Int -> ( a, ( RecordAlias, Dict b () ) ) -> Maybe (Error {})
+recordToError : FunctionScope -> Dict TypeName Int -> ( a, ( TypeName, Dict b () ) ) -> Maybe (Error {})
 recordToError functionScope recordFieldsCount recordFieldUsed =
     let
         recordAlias =
@@ -268,8 +268,8 @@ recordToError functionScope recordFieldsCount recordFieldUsed =
             )
 
 
-destructedError : Node a -> RecordAlias -> Int -> Int -> Error {}
-destructedError node (RecordAlias record) used all =
+destructedError : Node a -> TypeName -> Int -> Int -> Error {}
+destructedError node (TypeName record) used all =
     Rule.error
         { message = "Non-exhaustive Record Destructing detected"
         , details =
@@ -279,8 +279,8 @@ destructedError node (RecordAlias record) used all =
         (Node.range node)
 
 
-accessError : FunctionScope -> RecordAlias -> Int -> Int -> Error {}
-accessError (FunctionScope range) (RecordAlias record) used all =
+accessError : FunctionScope -> TypeName -> Int -> Int -> Error {}
+accessError (FunctionScope range) (TypeName record) used all =
     Rule.error
         { message = "Non-exhaustive Record Access detected"
         , details =

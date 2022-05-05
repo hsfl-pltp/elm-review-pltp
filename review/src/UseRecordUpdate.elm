@@ -1,5 +1,6 @@
 module UseRecordUpdate exposing (rule)
 
+import AssocList as Dict exposing (Dict)
 import Elm.Syntax.Declaration as Declaration exposing (Declaration)
 import Elm.Syntax.Expression as Expression exposing (Expression, FunctionImplementation, RecordSetter)
 import Elm.Syntax.Node as Node exposing (Node)
@@ -8,34 +9,56 @@ import Elm.Syntax.TypeAnnotation as TypeAnnotation exposing (TypeAnnotation)
 import Review.Rule as Rule exposing (Error, Rule)
 
 
+type TypeName
+    = TypeName String
+
+
+type VarName
+    = VarName String
+
+
+type RecordField
+    = RecordField String
+
+
+type alias Context =
+    { recordAliases : List TypeName
+    , accessors : List VarName
+    , destructed : List RecordField
+    , isFunctionWithRecordReturn : Bool
+    }
+
+
+initialContext : Context
+initialContext =
+    { recordAliases = []
+    , accessors = []
+    , destructed = []
+    , isFunctionWithRecordReturn = False
+    }
+
+
 rule : Rule
 rule =
-    Rule.newModuleRuleSchema "UseRecordUpdate" { isFunctionWithRecordReturn = False, records = [], destructed = [] }
+    Rule.newModuleRuleSchema "UseRecordUpdate" initialContext
         |> Rule.withDeclarationListVisitor declarationListVisitor
         |> Rule.withDeclarationEnterVisitor declarationVisitor
         |> Rule.withExpressionEnterVisitor expressionVisitor
         |> Rule.fromModuleRuleSchema
 
 
-type alias Context =
-    { isFunctionWithRecordReturn : Bool
-    , records : List String
-    , destructed : List String
-    }
-
-
-declarationListVisitor : List (Node Declaration) -> Context -> ( List nothing, Context )
+declarationListVisitor : List (Node Declaration) -> Context -> ( List a, Context )
 declarationListVisitor nodes context =
-    ( [], { context | records = List.filterMap recordAlias nodes } )
+    ( [], { context | recordAliases = List.filterMap customRecord nodes } )
 
 
-recordAlias : Node Declaration -> Maybe String
-recordAlias node =
+customRecord : Node Declaration -> Maybe TypeName
+customRecord node =
     case Node.value node of
         Declaration.AliasDeclaration { name, typeAnnotation } ->
             case Node.value typeAnnotation of
                 TypeAnnotation.Record _ ->
-                    Just (Node.value name)
+                    Just (TypeName (Node.value name))
 
                 _ ->
                     Nothing
@@ -47,24 +70,15 @@ recordAlias node =
 declarationVisitor : Node Declaration -> Context -> ( List (Error {}), Context )
 declarationVisitor node context =
     case Node.value node of
-        Declaration.FunctionDeclaration function ->
-            case function.signature of
-                Just sigNode ->
-                    let
-                        hasToVisit =
-                            Node.value sigNode
-                                |> .typeAnnotation
-                                |> Node.value
-                                |> hasRecordReturnAndRecordParameter context
+        Declaration.FunctionDeclaration { declaration, signature } ->
+            case signature of
+                Just sig ->
+                    case recordArguments context.recordAliases (.typeAnnotation (Node.value sig)) (.arguments (Node.value declaration)) of
+                        Just ( accessors, destructs ) ->
+                            Debug.todo "in context aufnehmen"
 
-                        destructed =
-                            if hasToVisit then
-                                destructedRecordFieldNames function.declaration
-
-                            else
-                                []
-                    in
-                    ( [], { context | isFunctionWithRecordReturn = hasToVisit, destructed = destructed } )
+                        Nothing ->
+                            ( [], { context | isFunctionWithRecordReturn = False } )
 
                 Nothing ->
                     ( [], { context | isFunctionWithRecordReturn = False } )
@@ -73,52 +87,92 @@ declarationVisitor node context =
             ( [], { context | isFunctionWithRecordReturn = False } )
 
 
-hasRecordReturnAndRecordParameter : Context -> TypeAnnotation -> Bool
-hasRecordReturnAndRecordParameter context typeAnnotation =
+recordArguments : List TypeName -> Node TypeAnnotation -> List (Node Pattern) -> Maybe ( List VarName, List RecordField )
+recordArguments recordAliases node list =
+    let
+        recordArgs =
+            hasRecordReturnAndRecordArgument recordAliases (typesWithPatterns node list)
+    in
+    if List.isEmpty recordArgs then
+        Nothing
+
+    else
+        Just
+            ( List.filterMap undestructedRecordName recordArgs
+            , List.concatMap destructedRecordField recordArgs
+            )
+
+
+hasRecordReturnAndRecordArgument : List TypeName -> List ( TypeName, Maybe (Node Pattern) ) -> List (Node Pattern)
+hasRecordReturnAndRecordArgument recordAliases typesPatterns =
     let
         typeListRev =
-            functionTypes typeAnnotation
-                |> List.reverse
+            List.reverse (List.map Tuple.first typesPatterns)
 
         returnMaybe =
             List.head typeListRev
 
-        parametersMaybe =
+        argumentsMaybe =
             List.tail typeListRev
     in
-    case ( returnMaybe, parametersMaybe ) of
-        ( Just return, Just parameters ) ->
-            List.member return context.records && List.member return parameters
+    case ( returnMaybe, argumentsMaybe ) of
+        ( Just return, Just arguments ) ->
+            if List.member return recordAliases && List.member return arguments then
+                List.filterMap
+                    (\( t, p ) ->
+                        case p of
+                            Just pattern ->
+                                if List.member t recordAliases then
+                                    Just pattern
 
-        _ ->
-            False
+                                else
+                                    Nothing
 
+                            Nothing ->
+                                Nothing
+                    )
+                    typesPatterns
 
-functionTypes : TypeAnnotation -> List String
-functionTypes typeAnnotation =
-    case typeAnnotation of
-        TypeAnnotation.FunctionTypeAnnotation head tail ->
-            functionTypes (Node.value head) ++ functionTypes (Node.value tail)
-
-        TypeAnnotation.Typed node _ ->
-            [ Tuple.second (Node.value node) ]
+            else
+                []
 
         _ ->
             []
 
 
-destructedRecordFieldNames : Node FunctionImplementation -> List String
-destructedRecordFieldNames node =
-    Node.value node
-        |> .arguments
-        |> List.concatMap recordFieldsInPattern
+typesWithPatterns : Node TypeAnnotation -> List (Node Pattern) -> List ( TypeName, Maybe (Node Pattern) )
+typesWithPatterns typeAnnotation list =
+    case Node.value typeAnnotation of
+        TypeAnnotation.FunctionTypeAnnotation head tail ->
+            typesWithPatterns head (List.take 1 list) ++ typesWithPatterns tail (List.drop 1 list)
+
+        TypeAnnotation.Typed typed _ ->
+            case list of
+                [] ->
+                    [ ( TypeName (Tuple.second (Node.value typed)), Nothing ) ]
+
+                pattern :: _ ->
+                    [ ( TypeName (Tuple.second (Node.value typed)), Just pattern ) ]
+
+        _ ->
+            []
 
 
-recordFieldsInPattern : Node Pattern -> List String
-recordFieldsInPattern node =
+undestructedRecordName : Node Pattern -> Maybe VarName
+undestructedRecordName node =
+    case Node.value node of
+        Pattern.VarPattern name ->
+            Just (VarName name)
+
+        _ ->
+            Nothing
+
+
+destructedRecordField : Node Pattern -> List RecordField
+destructedRecordField node =
     case Node.value node of
         Pattern.RecordPattern list ->
-            List.map Node.value list
+            List.map (\fieldNode -> RecordField (Node.value fieldNode)) list
 
         _ ->
             []
@@ -166,8 +220,9 @@ hasUnchangedValue context recordSetter =
                     False
 
         Expression.FunctionOrValue _ fovName ->
-            List.member fovName context.destructed && name == fovName
+            True
 
+        -- List.member fovName context.destructed && name == fovName
         Expression.RecordAccess _ accessNode ->
             name == Node.value accessNode
 
