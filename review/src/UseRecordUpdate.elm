@@ -1,10 +1,10 @@
 module UseRecordUpdate exposing (rule)
 
-import AssocList as Dict exposing (Dict)
 import Elm.Syntax.Declaration as Declaration exposing (Declaration)
 import Elm.Syntax.Expression as Expression exposing (Expression, FunctionImplementation, RecordSetter)
 import Elm.Syntax.Node as Node exposing (Node)
 import Elm.Syntax.Pattern as Pattern exposing (Pattern)
+import Elm.Syntax.Range exposing (Range)
 import Elm.Syntax.TypeAnnotation as TypeAnnotation exposing (TypeAnnotation)
 import Review.Rule as Rule exposing (Error, Rule)
 
@@ -23,8 +23,8 @@ type RecordField
 
 type alias Context =
     { recordAliases : List TypeName
-    , accessors : List VarName
-    , destructed : List RecordField
+    , varNames : List VarName
+    , recordFields : List RecordField
     , isFunctionWithRecordReturn : Bool
     }
 
@@ -32,8 +32,8 @@ type alias Context =
 initialContext : Context
 initialContext =
     { recordAliases = []
-    , accessors = []
-    , destructed = []
+    , varNames = []
+    , recordFields = []
     , isFunctionWithRecordReturn = False
     }
 
@@ -74,8 +74,8 @@ declarationVisitor node context =
             case signature of
                 Just sig ->
                     case recordArguments context.recordAliases (.typeAnnotation (Node.value sig)) (.arguments (Node.value declaration)) of
-                        Just ( accessors, destructs ) ->
-                            Debug.todo "in context aufnehmen"
+                        Just ( varNames, recordFields ) ->
+                            ( [], { context | isFunctionWithRecordReturn = True, varNames = varNames, recordFields = recordFields } )
 
                         Nothing ->
                             ( [], { context | isFunctionWithRecordReturn = False } )
@@ -91,7 +91,7 @@ recordArguments : List TypeName -> Node TypeAnnotation -> List (Node Pattern) ->
 recordArguments recordAliases node list =
     let
         recordArgs =
-            hasRecordReturnAndRecordArgument recordAliases (typesWithPatterns node list)
+            argumentsOfRecordReturnType recordAliases (typesWithPatterns node list)
     in
     if List.isEmpty recordArgs then
         Nothing
@@ -99,30 +99,27 @@ recordArguments recordAliases node list =
     else
         Just
             ( List.filterMap undestructedRecordName recordArgs
-            , List.concatMap destructedRecordField recordArgs
+            , List.concatMap destructedRecordFields recordArgs
             )
 
 
-hasRecordReturnAndRecordArgument : List TypeName -> List ( TypeName, Maybe (Node Pattern) ) -> List (Node Pattern)
-hasRecordReturnAndRecordArgument recordAliases typesPatterns =
+argumentsOfRecordReturnType : List TypeName -> List ( TypeName, Maybe (Node Pattern) ) -> List (Node Pattern)
+argumentsOfRecordReturnType recordAliases typesPatterns =
     let
-        typeListRev =
-            List.reverse (List.map Tuple.first typesPatterns)
-
         returnMaybe =
-            List.head typeListRev
-
-        argumentsMaybe =
-            List.tail typeListRev
+            typesPatterns
+                |> List.map Tuple.first
+                |> List.reverse
+                |> List.head
     in
-    case ( returnMaybe, argumentsMaybe ) of
-        ( Just return, Just arguments ) ->
-            if List.member return recordAliases && List.member return arguments then
+    case returnMaybe of
+        Just return ->
+            if List.member return recordAliases then
                 List.filterMap
                     (\( t, p ) ->
                         case p of
                             Just pattern ->
-                                if List.member t recordAliases then
+                                if t == return then
                                     Just pattern
 
                                 else
@@ -136,7 +133,7 @@ hasRecordReturnAndRecordArgument recordAliases typesPatterns =
             else
                 []
 
-        _ ->
+        Nothing ->
             []
 
 
@@ -168,8 +165,8 @@ undestructedRecordName node =
             Nothing
 
 
-destructedRecordField : Node Pattern -> List RecordField
-destructedRecordField node =
+destructedRecordFields : Node Pattern -> List RecordField
+destructedRecordFields node =
     case Node.value node of
         Pattern.RecordPattern list ->
             List.map (\fieldNode -> RecordField (Node.value fieldNode)) list
@@ -183,11 +180,7 @@ expressionVisitor node context =
     if context.isFunctionWithRecordReturn then
         case Node.value node of
             Expression.RecordExpr list ->
-                if List.any (hasUnchangedValue context) list then
-                    ( [ ruleError node ], context )
-
-                else
-                    ( [], context )
+                ( List.filterMap (hasUnchangedValue context.varNames context.recordFields) list, context )
 
             _ ->
                 ( [], context )
@@ -196,49 +189,51 @@ expressionVisitor node context =
         ( [], context )
 
 
-hasUnchangedValue : Context -> Node RecordSetter -> Bool
-hasUnchangedValue context recordSetter =
+hasUnchangedValue : List VarName -> List RecordField -> Node RecordSetter -> Maybe (Error {})
+hasUnchangedValue varNames recordFields recordSetter =
     let
-        ( nameNode, expression ) =
+        ( fieldNode, expression ) =
             Node.value recordSetter
 
-        name =
-            Node.value nameNode
+        component =
+            Node.value fieldNode
+
+        argumentStrings =
+            List.map (\(VarName name) -> name) varNames
+
+        accessorStrings =
+            List.map (\(RecordField field) -> field) recordFields
     in
     case Node.value expression of
-        Expression.Application nodes ->
-            case List.head nodes of
-                Just head ->
-                    case Node.value head of
-                        Expression.RecordAccessFunction access ->
-                            name == access
+        Expression.FunctionOrValue _ fovName ->
+            if List.member fovName accessorStrings && component == fovName then
+                Just (ruleError (Node.range expression))
 
-                        _ ->
-                            False
+            else
+                Nothing
+
+        Expression.RecordAccess exprNode accessNode ->
+            case Node.value exprNode of
+                Expression.FunctionOrValue _ var ->
+                    if List.member var argumentStrings && component == Node.value accessNode then
+                        Just (ruleError (Node.range accessNode))
+
+                    else
+                        Nothing
 
                 _ ->
-                    False
-
-        Expression.FunctionOrValue _ fovName ->
-            True
-
-        -- List.member fovName context.destructed && name == fovName
-        Expression.RecordAccess _ accessNode ->
-            name == Node.value accessNode
-
-        Expression.RecordAccessFunction fName ->
-            name == fName
+                    Nothing
 
         _ ->
-            False
+            Nothing
 
 
-ruleError : Node a -> Error {}
-ruleError node =
+ruleError : Range -> Error {}
+ruleError range =
     Rule.error
         { message = "Use Record-Update Syntax"
         , details =
             [ "Record-Expression with unchanging fields detected"
             ]
         }
-        (Node.range node)
+        range

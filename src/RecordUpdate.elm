@@ -55,4 +55,4 @@ diffDestructDifferent { x, y } v3 =
 
 twoDifferent : Vector3 -> Vector3 -> Vector3
 twoDifferent v1 v2 =
-    { x = v1.x + v2.x, y = v1.y - v2.y + v2.z, z = v1.z }
+    { x = v1.x + v1.z + v2.x + v2.y, y = v1.y, z = v2.z }
