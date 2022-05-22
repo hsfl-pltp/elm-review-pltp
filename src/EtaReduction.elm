@@ -8,7 +8,12 @@ incList list =
 
 inc : Int -> Int
 inc =
-    \i -> 1 + i
+    \i -> i - 1
+
+
+dec : Int -> Int
+dec =
+    \d -> d - 1
 
 
 increase1 : Int -> Int
@@ -19,3 +24,13 @@ increase1 =
 increase2 : Int -> Int
 increase2 =
     \x -> inc x
+
+
+moreArgs : Int -> Int -> Int
+moreArgs =
+    \x y -> add (add x y) y
+
+
+foo : Int -> Int
+foo =
+    \x -> add x x
