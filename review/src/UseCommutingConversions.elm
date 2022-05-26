@@ -119,7 +119,7 @@ errorsForCase node cases =
         expressions =
             List.map Tuple.second cases
     in
-    if List.all (\( a, b ) -> haveCommonContext a b) (List.Extra.combinations expressions) then
+    if List.all (\( a, b ) -> haveCommonContext a b) (List.Extra.uniquePairs expressions) then
         [ caseErrors node ]
 
     else

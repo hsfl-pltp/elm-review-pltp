@@ -16,7 +16,7 @@ import Elm.Syntax.Pattern as Pattern exposing (Pattern)
 import Elm.Syntax.Range exposing (Location, Range)
 import List.Extra
 import Review.Rule as Rule exposing (Error, Rule)
-import Visitor exposing (countAppearancesOfString)
+import Visitor
 
 
 {-| Reports the possibility to apply a eta reduction
@@ -202,15 +202,12 @@ equal expression pattern =
             var == val
 
         ( Pattern.VarPattern var, Expression.Application expressions ) ->
-            Visitor.countAppearancesOfString var expression
-                == 1
-                && (case List.Extra.last expressions of
-                        Nothing ->
-                            False
+            case List.Extra.last expressions of
+                Nothing ->
+                    False
 
-                        Just expr ->
-                            equal expr pattern
-                   )
+                Just expr ->
+                    equal expr pattern && List.Extra.count ((==) var) (Visitor.variableNamesInExpression expression) == 1
 
         _ ->
             False
