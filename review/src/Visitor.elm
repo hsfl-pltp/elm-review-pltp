@@ -1,95 +1,64 @@
-module Visitor exposing (countAppearancesOfString)
+module Visitor exposing (variableNamesInExpression)
 
-import Elm.Syntax.Expression as Expression exposing (Expression, LetDeclaration)
+import Elm.Syntax.Expression as Expression exposing (Expression(..), LetDeclaration)
 import Elm.Syntax.Node as Node exposing (Node)
 
 
-countAppearancesOfString : String -> Node Expression -> Int
-countAppearancesOfString string node =
-    case Node.value node of
-        Expression.Application nodes ->
-            List.foldl (+) 0 (List.map (countAppearancesOfString string) nodes)
+variableNamesInExpression : Node Expression -> List String
+variableNamesInExpression expr =
+    case Node.value expr of
+        Application nodes ->
+            List.concatMap variableNamesInExpression nodes
 
-        Expression.OperatorApplication _ _ left right ->
-            countAppearancesOfString string left
-                + countAppearancesOfString string right
+        OperatorApplication _ _ left right ->
+            variableNamesInExpression left ++ variableNamesInExpression right
 
-        Expression.FunctionOrValue _ value ->
-            if value == string then
-                1
+        FunctionOrValue _ string ->
+            [ string ]
 
-            else
-                0
+        IfBlock condition hit miss ->
+            variableNamesInExpression condition ++ variableNamesInExpression hit ++ variableNamesInExpression miss
 
-        Expression.IfBlock condition hit miss ->
-            countAppearancesOfString string condition
-                + countAppearancesOfString string hit
-                + countAppearancesOfString string miss
+        Negation node ->
+            variableNamesInExpression node
 
-        Expression.Negation negated ->
-            countAppearancesOfString string negated
+        TupledExpression nodes ->
+            List.concatMap variableNamesInExpression nodes
 
-        Expression.TupledExpression nodes ->
-            List.foldl (+) 0 (List.map (countAppearancesOfString string) nodes)
+        ParenthesizedExpression node ->
+            variableNamesInExpression node
 
-        Expression.ParenthesizedExpression parenthesized ->
-            countAppearancesOfString string parenthesized
-
-        Expression.LetExpression { declarations, expression } ->
-            List.foldl
-                (+)
-                (countAppearancesOfString string expression)
-                (List.map
+        LetExpression { declarations, expression } ->
+            variableNamesInExpression expression
+                ++ List.concatMap
                     (\letDeclaration ->
                         case Node.value letDeclaration of
                             Expression.LetFunction { declaration } ->
-                                countAppearancesOfString string (.expression (Node.value declaration))
+                                variableNamesInExpression (.expression (Node.value declaration))
 
-                            Expression.LetDestructuring _ expr ->
-                                countAppearancesOfString string expr
+                            Expression.LetDestructuring _ node ->
+                                variableNamesInExpression node
                     )
                     declarations
-                )
 
-        Expression.CaseExpression { expression, cases } ->
-            List.foldl
-                (+)
-                (countAppearancesOfString string expression)
-                (List.map
-                    (\( _, expr ) ->
-                        countAppearancesOfString string expr
-                    )
-                    cases
-                )
+        CaseExpression { expression, cases } ->
+            variableNamesInExpression expression
+                ++ List.concatMap (\c -> variableNamesInExpression (Tuple.second c)) cases
 
-        Expression.LambdaExpression { expression } ->
-            countAppearancesOfString string expression
+        LambdaExpression { expression } ->
+            variableNamesInExpression expression
 
-        Expression.RecordExpr nodes ->
-            List.foldl (+)
-                0
-                (List.map
-                    (\recordSetter ->
-                        countAppearancesOfString string (Tuple.second (Node.value recordSetter))
-                    )
-                    nodes
-                )
+        RecordExpr nodes ->
+            List.concatMap (\recordSetter -> variableNamesInExpression (Tuple.second (Node.value recordSetter))) nodes
 
-        Expression.ListExpr nodes ->
-            List.foldl (+) 0 (List.map (countAppearancesOfString string) nodes)
+        ListExpr nodes ->
+            List.concatMap variableNamesInExpression nodes
 
-        Expression.RecordAccess access _ ->
-            countAppearancesOfString string access
+        RecordAccess node _ ->
+            variableNamesInExpression node
 
-        Expression.RecordUpdateExpression _ nodes ->
-            List.foldl (+)
-                0
-                (List.map
-                    (\recordSetter ->
-                        countAppearancesOfString string (Tuple.second (Node.value recordSetter))
-                    )
-                    nodes
-                )
+        RecordUpdateExpression _ nodes ->
+            List.concatMap (\recordSetter -> variableNamesInExpression (Tuple.second (Node.value recordSetter))) nodes
 
         _ ->
-            0
+            []

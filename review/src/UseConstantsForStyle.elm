@@ -210,7 +210,7 @@ errorsForAttributes : Node Expression -> Context -> List (Error {})
 errorsForAttributes node context =
     case Node.value node of
         Expression.ListExpr nodes ->
-            if List.Extra.some (isStyleAttribute context.lookupTable) nodes then
+            if List.Extra.count (isStyleAttribute context.lookupTable) nodes >= 2 then
                 [ ruleError node ]
 
             else
