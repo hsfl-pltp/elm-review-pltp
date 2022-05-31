@@ -14,7 +14,8 @@ import Elm.Syntax.Expression as Expression exposing (Expression, Function, Funct
 import Elm.Syntax.Node as Node exposing (Node(..))
 import Elm.Syntax.Pattern as Pattern exposing (Pattern)
 import Elm.Syntax.Range exposing (Location, Range)
-import List.Extra
+import List.Extra as List
+import Maybe.Extra as Maybe
 import Review.Rule as Rule exposing (Error, Rule)
 import Visitor
 
@@ -102,7 +103,7 @@ expressionVisitor : Node Expression -> Context -> ( List (Error {}), Context )
 expressionVisitor node context =
     case Node.value node of
         Expression.LambdaExpression { args, expression } ->
-            case List.Extra.last args of
+            case List.last args of
                 Just arg ->
                     if equal expression arg then
                         ( [], { context | lambdaCount = context.lambdaCount + 1 } )
@@ -130,7 +131,7 @@ declarationVisitor node context =
             in
             case Node.value expr of
                 Expression.Application list ->
-                    case ( List.Extra.last list, List.Extra.last args ) of
+                    case ( List.last list, List.last args ) of
                         ( Just exp, Just pat ) ->
                             if equal exp pat then
                                 ( [], { context | applCount = context.applCount + 1 } )
@@ -161,7 +162,7 @@ errorsFunctionImplementation : Node FunctionImplementation -> List (Error {})
 errorsFunctionImplementation (Node _ { expression, arguments }) =
     case Node.value expression of
         Expression.Application list ->
-            errorsForApplication expression (List.Extra.last list) (List.Extra.last arguments)
+            errorsForApplication expression (List.last list) (List.last arguments)
 
         _ ->
             []
@@ -183,7 +184,7 @@ errorsForApplication node expression pattern =
 
 errorsForLambda : Node Expression -> Expression.Lambda -> List (Error {})
 errorsForLambda node { expression, args } =
-    case List.Extra.last args of
+    case List.last args of
         Nothing ->
             []
 
@@ -202,12 +203,12 @@ equal expression pattern =
             var == val
 
         ( Pattern.VarPattern var, Expression.Application expressions ) ->
-            case List.Extra.last expressions of
+            case List.last expressions of
                 Nothing ->
                     False
 
                 Just expr ->
-                    equal expr pattern && List.Extra.count ((==) var) (Visitor.variableNamesInExpression expression) == 1
+                    equal expr pattern && List.count ((==) var) (Visitor.variableNamesInExpression expression) == 1
 
         _ ->
             False
@@ -239,18 +240,23 @@ moduleError : Context -> Error {}
 moduleError context =
     Rule.error
         { message = "Possible eta reduction detected"
-        , details =
-            (if context.applCount > 0 then
-                [ "I found " ++ String.fromInt context.applCount ++ " function(s) with applicable eta reduction" ]
-
-             else
-                []
-            )
-                ++ (if context.lambdaCount > 0 then
-                        [ "I found " ++ String.fromInt context.lambdaCount ++ " lambda expression(s) with applicable eta reduction" ]
-
-                    else
-                        []
-                   )
+        , details = Maybe.toList (errorMessage "function" context.applCount) ++ Maybe.toList (errorMessage "lambda expression" context.lambdaCount)
         }
         globalRange
+
+
+errorMessage : String -> Int -> Maybe String
+errorMessage entity count =
+    let
+        plural string n =
+            if n == 1 then
+                string
+
+            else
+                string ++ "s"
+    in
+    if count > 0 then
+        Just ("I found " ++ String.fromInt count ++ " " ++ plural entity count ++ " where eta reduction can be applied.")
+
+    else
+        Nothing
