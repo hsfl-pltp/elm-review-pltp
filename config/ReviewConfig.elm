@@ -85,7 +85,7 @@ config =
     , UseCommutingConversions.rule
     , UseConstantsForStyle.rule
     , UseCamelCase.rule UseCamelCase.default
-    , UseEtaReductions.rule LocatedError
+    , UseEtaReductions.rule ModuleError
     , UseInvertedOperators.rule
     , UseNamingConventions.rule
     , UseLogicalOperators.rule
