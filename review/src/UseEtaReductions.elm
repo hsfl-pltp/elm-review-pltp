@@ -11,9 +11,10 @@ module UseEtaReductions exposing
 
 import Elm.Syntax.Declaration as Declaration exposing (Declaration)
 import Elm.Syntax.Expression as Expression exposing (Expression, Function, FunctionImplementation)
+import Elm.Syntax.Module exposing (Module)
 import Elm.Syntax.Node as Node exposing (Node(..))
 import Elm.Syntax.Pattern as Pattern exposing (Pattern)
-import Elm.Syntax.Range exposing (Location, Range)
+import Elm.Syntax.Range as Range exposing (Location, Range)
 import List.Extra as List
 import Maybe.Extra as Maybe
 import Review.Rule as Rule exposing (Error, Rule)
@@ -55,7 +56,7 @@ type alias Context =
 
 initialContext : Context
 initialContext =
-    { applCount = 0, lambdaCount = 0, moduleRange = Range (Location 1 1) (Location 1 1) }
+    { applCount = 0, lambdaCount = 0, moduleRange = Range.emptyRange }
 
 
 rule : ErrorStyle -> Rule
@@ -69,10 +70,16 @@ rule errorStyle =
 
         ModuleError ->
             Rule.newModuleRuleSchema "UseEtaReductions" initialContext
+                |> Rule.withModuleDefinitionVisitor moduleDefinitionVisitor
                 |> Rule.withExpressionEnterVisitor expressionVisitor
                 |> Rule.withDeclarationEnterVisitor declarationVisitor
                 |> Rule.withFinalModuleEvaluation finalEvaluation
                 |> Rule.fromModuleRuleSchema
+
+
+moduleDefinitionVisitor : Node Module -> Context -> ( List (Error {}), Context )
+moduleDefinitionVisitor node context =
+    ( [], { context | moduleRange = Node.range node } )
 
 
 simpleExpressionVisitor : Node Expression -> List (Error {})
@@ -116,13 +123,6 @@ expressionVisitor node context =
 
 declarationVisitor : Node Declaration -> Context -> ( List (Error {}), Context )
 declarationVisitor node context =
-    let
-        { end } =
-            Node.range node
-
-        moduleRange =
-            Range (Location 1 1) end
-    in
     case Node.value node of
         Declaration.FunctionDeclaration { declaration } ->
             let
@@ -137,19 +137,19 @@ declarationVisitor node context =
                     case ( List.last list, List.last args ) of
                         ( Just exp, Just pat ) ->
                             if equal exp pat then
-                                ( [], { context | applCount = context.applCount + 1, moduleRange = moduleRange } )
+                                ( [], { context | applCount = context.applCount + 1 } )
 
                             else
-                                ( [], { context | moduleRange = moduleRange } )
+                                ( [], context )
 
                         _ ->
-                            ( [], { context | moduleRange = moduleRange } )
+                            ( [], context )
 
                 _ ->
-                    ( [], { context | moduleRange = moduleRange } )
+                    ( [], context )
 
         _ ->
-            ( [], { context | moduleRange = moduleRange } )
+            ( [], context )
 
 
 finalEvaluation : Context -> List (Error {})
