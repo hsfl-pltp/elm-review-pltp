@@ -41,11 +41,6 @@ import Visitor
         map inc
 
 -}
-globalRange : Range
-globalRange =
-    Range (Location 0 0) (Location 0 0)
-
-
 type ErrorStyle
     = LocatedError
     | ModuleError
@@ -54,12 +49,13 @@ type ErrorStyle
 type alias Context =
     { applCount : Int
     , lambdaCount : Int
+    , moduleRange : Range
     }
 
 
 initialContext : Context
 initialContext =
-    { applCount = 0, lambdaCount = 0 }
+    { applCount = 0, lambdaCount = 0, moduleRange = Range (Location 1 1) (Location 1 1) }
 
 
 rule : ErrorStyle -> Rule
@@ -120,6 +116,13 @@ expressionVisitor node context =
 
 declarationVisitor : Node Declaration -> Context -> ( List (Error {}), Context )
 declarationVisitor node context =
+    let
+        { end } =
+            Node.range node
+
+        moduleRange =
+            Range (Location 1 1) end
+    in
     case Node.value node of
         Declaration.FunctionDeclaration { declaration } ->
             let
@@ -134,19 +137,19 @@ declarationVisitor node context =
                     case ( List.last list, List.last args ) of
                         ( Just exp, Just pat ) ->
                             if equal exp pat then
-                                ( [], { context | applCount = context.applCount + 1 } )
+                                ( [], { context | applCount = context.applCount + 1, moduleRange = moduleRange } )
 
                             else
-                                ( [], context )
+                                ( [], { context | moduleRange = moduleRange } )
 
                         _ ->
-                            ( [], context )
+                            ( [], { context | moduleRange = moduleRange } )
 
                 _ ->
-                    ( [], context )
+                    ( [], { context | moduleRange = moduleRange } )
 
         _ ->
-            ( [], context )
+            ( [], { context | moduleRange = moduleRange } )
 
 
 finalEvaluation : Context -> List (Error {})
@@ -242,7 +245,7 @@ moduleError context =
         { message = "Possible eta reduction detected"
         , details = Maybe.toList (errorMessage "function" context.applCount) ++ Maybe.toList (errorMessage "lambda expression" context.lambdaCount)
         }
-        globalRange
+        context.moduleRange
 
 
 errorMessage : String -> Int -> Maybe String
